@@ -1,0 +1,6 @@
+[submodule "data/tennis_atp"]
+	path = data/tennis_atp
+	url = https://github.com/JeffSackmann/tennis_atp
+[submodule "data/matchcharting"]
+	path = data/matchcharting
+	url = https://github.com/JeffSackmann/tennis_MatchChartingProject
