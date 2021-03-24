@@ -1,0 +1,52 @@
+---
+title: "tennis"
+author: "Mihai Matei, Catalin Stefan Cernat 511DS"
+date: "3/24/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## ATP Tennis Visualisation
+
+This project is about tennis ATP results
+
+```{r, echo=FALSE}
+load_packages <- function(package_names) {
+  list.of.packages <- as.vector(package_names)
+  new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+  if(length(new.packages)) {
+    install.packages(new.packages)
+  }
+  sapply(list.of.packages, require, character.only = TRUE)
+}
+
+load_packages(c('rmarkdown', 'tidyverse'))
+```
+
+### Merging CVS files
+
+```{r, echo=FALSE}
+load_data <- function(directory, regex, column_types) {
+    list.files(path = directory, pattern = regex, full.names = T) %>% 
+      lapply( (function (file) read_csv(file, col_types = column_types)) ) %>% dplyr::bind_rows()
+}
+
+#setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+
+singlesDF <- load_data('./data/tennis_atp', "atp_matches_\\d*.csv",
+                       cols( winner_entry = "c", loser_entry="c", loser_rank="i", winner_rank="i"))
+
+nrow(singlesDF)
+ncol(singlesDF)
+sapply(singlesDF, class)
+
+#doublesDF <- load_data('./data/tennis_atp', "atp_matches_doubles_\\d*.csv",
+#                       cols( winner_entry = "c", loser_entry="c"))
+
+#nrow(doublesDF)
+#ncol(doublesDF)
+#sapply(doublesDF, class)
+```
