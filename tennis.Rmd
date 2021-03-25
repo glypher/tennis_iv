@@ -36,12 +36,20 @@ load_data <- function(directory, regex, column_types) {
 
 #setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
-singlesDF <- load_data('./data/tennis_atp', "atp_matches_\\d*.csv",
-                       cols( winner_entry = "c", loser_entry="c", loser_rank="i", winner_rank="i"))
+singles_atp_DF <- load_data('./data/tennis_atp', "atp_matches_\\d*.csv",
+                            cols(  winner_entry = "c", loser_entry="c", loser_rank="i", winner_rank="i"))
 
-nrow(singlesDF)
-ncol(singlesDF)
-sapply(singlesDF, class)
+nrow(singles_atp_DF)
+ncol(singles_atp_DF)
+sapply(singles_atp_DF, class)
+
+
+singles_wta_DF <- load_data('./data/tennis_wta', "wta_matches_\\d*.csv",
+                            cols( .default="c", winner_entry = "c", loser_entry="c", loser_rank="i", winner_rank="i"))
+
+nrow(singles_wta_DF)
+ncol(singles_wta_DF)
+sapply(singles_wta_DF, class)
 
 #doublesDF <- load_data('./data/tennis_atp', "atp_matches_doubles_\\d*.csv",
 #                       cols( winner_entry = "c", loser_entry="c"))

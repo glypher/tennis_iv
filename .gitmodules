@@ -4,3 +4,6 @@
 [submodule "data/matchcharting"]
 	path = data/matchcharting
 	url = https://github.com/JeffSackmann/tennis_MatchChartingProject
+[submodule "data/tennis_wta"]
+	path = data/tennis_wta
+	url = https://github.com/JeffSackmann/tennis_wta
