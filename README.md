@@ -4,24 +4,24 @@
 There are 49 columns in total. Below is breakdown by data type.
 
 ### Categorical Ordered (3):
-* best_of
-* tourney_level
-* round
+* best_of: levels(3, 5)
+* round: This should be ordered? RXX, QF, SF, F are obvious. But there are also BR, ER, RR (round robin / group stages?)
 
 
 
 ### Categorical Unordered (13):
 * tourney_id
 * tourney_name
+* tourney_level: Made a mistake, this is un-ordered factor (e.g. G = 'Grand Slam', C = 'Challengers', ect.)
 * surface
 * winner_entry
 * winner_name
-* winner_hand
-* winner_ioc
+* winner_hand: levels(L, R)
+* winner_ioc: Three character country code
 * loser_entry
-* loser_name	
-* loser_hand
-* loser_ioc
+* loser_name
+* loser_hand: levels(L, R)
+* loser_ioc: Three character country code
 * winner_id
 * loser_id
 
@@ -65,3 +65,5 @@ There are 49 columns in total. Below is breakdown by data type.
 
 ### Synthetic (1):
 * score (Numerical Discrete)
+* year: Obtained from tourney_id
+* league: ATP or WTA
