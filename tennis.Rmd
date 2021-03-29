@@ -123,15 +123,15 @@ combined_DF <- bind_rows(list(ATP = singles_atp_DF, WTA = singles_wta_DF), .id =
 
 nrow(singles_atp_DF)
 ncol(singles_atp_DF)
-sapply(singles_atp_DF, class)
+#sapply(singles_atp_DF, class)
 
 nrow(singles_wta_DF)
 ncol(singles_wta_DF)
-sapply(singles_wta_DF, class)
+#sapply(singles_wta_DF, class)
 
 nrow(combined_DF)
 ncol(combined_DF)
-sapply(combined_DF, class)
+#sapply(combined_DF, class)
 
 #doublesDF <- load_data('./data/tennis_atp', "atp_matches_doubles_\\d*.csv",
 #                       cols( winner_entry = "c", loser_entry="c"))
@@ -139,4 +139,21 @@ sapply(combined_DF, class)
 #nrow(doublesDF)
 #ncol(doublesDF)
 #sapply(doublesDF, class)
+```
+
+### EDA
+
+#### Number of matches per year
+Visualize how the number of matcher per league evoluted along each year. Notice the impact of the coronavirul pandemy.
+
+```{r, echo=FALSE}
+ggplot(combined_DF %>% group_by(league, year) %>% summarise(no_matches = length(year)),
+       aes(x=year, y=no_matches, group=league)) +
+  scale_x_continuous(breaks=seq(1848, 2021, 5)) +
+  geom_line(aes(color=league), size=1) + 
+  scale_color_manual(values=c('blue','red')) +
+  labs(x="Year", title="Number of matches per year", y="Number of matches") +
+  geom_vline(xintercept=2020, linetype="dotted", color="black", size=0.7) +
+  geom_text(aes(x=2020, label="CORONAVIRUS", y=3500), angle=90) +
+  theme_classic()
 ```
