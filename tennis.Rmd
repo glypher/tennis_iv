@@ -34,22 +34,104 @@ load_data <- function(directory, regex, column_types) {
       lapply( (function (file) read_csv(file, col_types = column_types)) ) %>% dplyr::bind_rows()
 }
 
+column_types = cols(
+  best_of = 'c',        # Parsed later (factor)
+  round = 'c',          # Parsed later (factor)
+  tourney_id = 'c',     # Parsed later (factor)
+  tourney_name = 'f',   # Parsed later (factor)
+  tourney_level = 'f',  # Parsed later (factor)
+  surface = 'f',        # Parsed later (factor)
+  winner_entry = 'f',   # Parsed later (factor)
+  winner_name = 'f',    # Parsed later (factor)
+  winner_hand = 'f',    # Parsed later (factor)
+  winner_ioc = 'f',     # Parsed later (factor)
+  loser_entry = 'f',    # Parsed later (factor)
+  loser_name = 'f',     # Parsed later (factor)
+  loser_hand = 'f',     # Parsed later (factor)
+  loser_ioc = 'f',      # Parsed later (factor)
+  winner_id = 'f',      # Parsed later (factor)
+  loser_id = 'f',       # Parsed later (factor)
+  
+  winner_age = 'd',
+  loser_age = 'd',
+  
+  draw_size = 'c',      # Parsed later (some non numeric in WTA)
+  tourney_date = 'c',   # Parsed later (needs to specify format)
+  match_num = 'i',
+  winner_seed = 'c',    # Parsed later (some non numeric in WTA)
+  winner_ht = 'i',
+  loser_seed = 'c',     # Parsed later (some non numeric in WTA)
+  loser_ht = 'i',
+  minutes = 'i',
+  w_ace = 'i',
+  w_df = 'i',
+  w_svpt = 'i',
+  w_1stIn = 'i',
+  w_1stWon = 'i',
+  w_2ndWon = 'i',
+  w_SvGms = 'i',
+  w_bpSaved = 'i',
+  w_bpFaced = 'i',
+  l_ace = 'i',
+  l_df = 'i',
+  l_svpt = 'i',
+  l_1stIn = 'i',
+  l_1stWon = 'i',
+  l_2ndWon = 'i',
+  l_SvGms = 'i',
+  l_bpSaved = 'i',
+  l_bpFaced = 'i',
+  winner_rank = "i",
+  winner_rank_points = 'i',
+  loser_rank = "i",
+  loser_rank_points = 'i'
+)
+
 #setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
-singles_atp_DF <- load_data('./data/tennis_atp', "atp_matches_\\d*.csv",
-                            cols(  winner_entry = "c", loser_entry="c", loser_rank="i", winner_rank="i"))
+singles_atp_DF <- load_data('./data/tennis_atp', "atp_matches_\\d*.csv", column_types)
+singles_wta_DF <- load_data('./data/tennis_wta', "wta_matches_\\d*.csv", column_types)
+
+combined_DF <- bind_rows(list(ATP = singles_atp_DF, WTA = singles_wta_DF), .id = "league") %>%
+  separate(col = tourney_id, into=c("year", "tourney_id"), sep="-", extra="merge") %>%
+  mutate(league = factor(league),
+         best_of = factor(best_of, ordered = TRUE, levels = c("3", "5")),
+         round = factor(round, ordered = TRUE),
+         
+         tourney_name = factor(tourney_name),
+         tourney_level = factor(tourney_level),
+         surface = factor(surface),
+         winner_entry = factor(winner_entry),
+         winner_name = factor(winner_name),
+         winner_hand = factor(winner_hand),
+         winner_ioc = factor(winner_ioc),
+         loser_entry = factor(loser_entry),
+         loser_name = factor(loser_name),
+         loser_hand = factor(loser_hand),
+         loser_ioc = factor(loser_ioc),
+         winner_id = factor(winner_id),
+         loser_id = factor(loser_id),
+         
+         tourney_id = factor(tourney_id),
+         year = as.integer(year),
+         tourney_date = parse_date(tourney_date, format="%Y%m%d"),
+         
+         draw_size = suppressWarnings(as.numeric(draw_size)),
+         winner_seed = suppressWarnings(as.numeric(winner_seed)),
+         loser_seed = suppressWarnings(as.numeric(loser_seed))
+         )
 
 nrow(singles_atp_DF)
 ncol(singles_atp_DF)
 sapply(singles_atp_DF, class)
 
-
-singles_wta_DF <- load_data('./data/tennis_wta', "wta_matches_\\d*.csv",
-                            cols( .default="c", winner_entry = "c", loser_entry="c", loser_rank="i", winner_rank="i"))
-
 nrow(singles_wta_DF)
 ncol(singles_wta_DF)
 sapply(singles_wta_DF, class)
+
+nrow(combined_DF)
+ncol(combined_DF)
+sapply(combined_DF, class)
 
 #doublesDF <- load_data('./data/tennis_atp', "atp_matches_doubles_\\d*.csv",
 #                       cols( winner_entry = "c", loser_entry="c"))
