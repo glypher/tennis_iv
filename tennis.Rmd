@@ -121,24 +121,13 @@ combined_DF <- bind_rows(list(ATP = singles_atp_DF, WTA = singles_wta_DF), .id =
          loser_seed = suppressWarnings(as.numeric(loser_seed))
          )
 
-nrow(singles_atp_DF)
-ncol(singles_atp_DF)
-#sapply(singles_atp_DF, class)
 
-nrow(singles_wta_DF)
-ncol(singles_wta_DF)
-#sapply(singles_wta_DF, class)
-
-nrow(combined_DF)
-ncol(combined_DF)
+#nrow(combined_DF)
+#ncol(combined_DF)
 #sapply(combined_DF, class)
 
 #doublesDF <- load_data('./data/tennis_atp', "atp_matches_doubles_\\d*.csv",
 #                       cols( winner_entry = "c", loser_entry="c"))
-
-#nrow(doublesDF)
-#ncol(doublesDF)
-#sapply(doublesDF, class)
 ```
 
 ### EDA
@@ -147,7 +136,7 @@ ncol(combined_DF)
 Visualize how the number of matcher per league evoluted along each year. Notice the impact of the coronavirul pandemy.
 
 ```{r, echo=FALSE}
-ggplot(combined_DF %>% group_by(league, year) %>% summarise(no_matches = length(year)),
+ggplot(combined_DF %>% group_by(league, year) %>% summarise(no_matches = length(year), .groups = 'drop'),
        aes(x=year, y=no_matches, group=league)) +
   scale_x_continuous(breaks=seq(1848, 2021, 5)) +
   geom_line(aes(color=league), size=1) + 
@@ -173,11 +162,25 @@ ggplot(combined_DF %>% filter(!is.na(winner_hand)) %>% group_by(league, winner_i
 Visualize how many matches are played per league depending on backhand
 ```{r, echo=FALSE}
 ggplot(combined_DF %>% filter(!is.na(winner_hand) & !is.na(loser_hand)) %>%
-         group_by(league, winner_hand, loser_hand) %>% summarise(no_matches = length(winner_hand)),
+         group_by(league, winner_hand, loser_hand) %>% summarise(no_matches = length(winner_hand), .groups = 'drop'),
        aes(winner_hand, loser_hand)) +
   geom_tile(aes(fill=no_matches)) +
   scale_fill_gradient(low = "light gray", high = "blue") +
   labs(x="Winner hand", y="Loser hand", title="Tile plot for number of matches by backhand") +
   theme_classic() +
   facet_wrap(~league, nrow=1)
+```
+
+#### Rank difference
+
+Visualize the distribution of rank difference of players in matches. Notice is gaussian with 0 mean.
+
+```{r, echo=FALSE}
+ggplot(combined_DF %>% filter(!is.na(winner_rank) & !is.na(loser_rank)) %>% 
+         group_by(league, winner_rank, loser_rank) %>% summarise(rank_difference = winner_rank - loser_rank, .groups = 'drop'),
+       aes(x=rank_difference)) +
+  geom_freqpoly(aes(color=league), bins=100) +
+  scale_color_manual(values=c('blue','red')) +
+  labs(x="Winner rank difference", y="Number of matches", title="Player rank difference of played matches") +
+  theme_classic()
 ```
