@@ -152,8 +152,32 @@ ggplot(combined_DF %>% group_by(league, year) %>% summarise(no_matches = length(
   scale_x_continuous(breaks=seq(1848, 2021, 5)) +
   geom_line(aes(color=league), size=1) + 
   scale_color_manual(values=c('blue','red')) +
-  labs(x="Year", title="Number of matches per year", y="Number of matches") +
+  labs(x="Year", y="Number of matches", title="Number of matches per year") +
   geom_vline(xintercept=2020, linetype="dotted", color="black", size=0.7) +
   geom_text(aes(x=2020, label="CORONAVIRUS", y=3500), angle=90) +
   theme_classic()
+```
+
+#### Player hand statistics
+
+Visualize how many players in both leagues use left, right or both hands for backhand
+
+```{r, echo=FALSE}
+ggplot(combined_DF %>% filter(!is.na(winner_hand)) %>% group_by(league, winner_id, winner_hand) %>% distinct(winner_id)) +
+  geom_bar(aes(winner_hand, fill = league), position = "dodge") +
+  scale_fill_manual(values=c('blue','red')) +
+  labs(x="Player hand", y="Number of players", title="Bar plot for number of players by hand") +
+  theme_classic()
+```
+
+Visualize how many matches are played per league depending on backhand
+```{r, echo=FALSE}
+ggplot(combined_DF %>% filter(!is.na(winner_hand) & !is.na(loser_hand)) %>%
+         group_by(league, winner_hand, loser_hand) %>% summarise(no_matches = length(winner_hand)),
+       aes(winner_hand, loser_hand)) +
+  geom_tile(aes(fill=no_matches)) +
+  scale_fill_gradient(low = "light gray", high = "blue") +
+  labs(x="Winner hand", y="Loser hand", title="Tile plot for number of matches by backhand") +
+  theme_classic() +
+  facet_wrap(~league, nrow=1)
 ```
