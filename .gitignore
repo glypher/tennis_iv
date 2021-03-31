@@ -10,6 +10,7 @@ data/
 
 # User-specific files
 .Ruserdata
+local_test.R
 
 # Example code in package build process
 *-Ex.R
@@ -40,3 +41,9 @@ vignettes/*.pdf
 
 # R Environment Variables
 .Renviron
+
+# R Project files
+*.Rproj
+
+# Idea files
+.idea

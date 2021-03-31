@@ -23,34 +23,34 @@ load_packages <- function(package_names) {
   sapply(list.of.packages, require, character.only = TRUE)
 }
 
-load_packages(c('rmarkdown', 'tidyverse'))
+load_packages(c('rmarkdown', 'tidyverse', 'lubridate'))
 ```
 
-### Merging CVS files
+### Merging ATP and WTA matches CVS files
 
 ```{r, echo=FALSE}
-load_data <- function(directory, regex, column_types) {
-    list.files(path = directory, pattern = regex, full.names = T) %>% 
-      lapply( (function (file) read_csv(file, col_types = column_types)) ) %>% dplyr::bind_rows()
+load_data <- function(directory, regex, column_types, col_names=TRUE) {
+  list.files(path = directory, pattern = regex, full.names = T) %>%
+    lapply( (function (file) read_csv(file, col_types = column_types, col_names = col_names)) ) %>% dplyr::bind_rows()
 }
 
 column_types = cols(
   best_of = 'c',        # Parsed later (factor)
   round = 'c',          # Parsed later (factor)
   tourney_id = 'c',     # Parsed later (factor)
-  tourney_name = 'f',   # Parsed later (factor)
-  tourney_level = 'f',  # Parsed later (factor)
-  surface = 'f',        # Parsed later (factor)
-  winner_entry = 'f',   # Parsed later (factor)
-  winner_name = 'f',    # Parsed later (factor)
-  winner_hand = 'f',    # Parsed later (factor)
-  winner_ioc = 'f',     # Parsed later (factor)
-  loser_entry = 'f',    # Parsed later (factor)
-  loser_name = 'f',     # Parsed later (factor)
-  loser_hand = 'f',     # Parsed later (factor)
-  loser_ioc = 'f',      # Parsed later (factor)
-  winner_id = 'f',      # Parsed later (factor)
-  loser_id = 'f',       # Parsed later (factor)
+  tourney_name = 'c',   # Parsed later (factor)
+  tourney_level = 'c',  # Parsed later (factor)
+  surface = 'c',        # Parsed later (factor)
+  winner_entry = 'c',   # Parsed later (factor)
+  winner_name = 'c',    # Parsed later (factor)
+  winner_hand = 'c',    # Parsed later (factor)
+  winner_ioc = 'c',     # Parsed later (factor)
+  loser_entry = 'c',    # Parsed later (factor)
+  loser_name = 'c',     # Parsed later (factor)
+  loser_hand = 'c',     # Parsed later (factor)
+  loser_ioc = 'c',      # Parsed later (factor)
+  winner_id = 'c',      # Parsed later (factor)
+  loser_id = 'c',       # Parsed later (factor)
   
   winner_age = 'd',
   loser_age = 'd',
@@ -130,6 +130,72 @@ combined_DF <- bind_rows(list(ATP = singles_atp_DF, WTA = singles_wta_DF), .id =
 #                       cols( winner_entry = "c", loser_entry="c"))
 ```
 
+### Merging ATP and WTA player CSV files 
+
+```{r, echo=FALSE}
+col_names = c(
+  "player_id", "first_name", "last_name", "hand", "birth_date", "ioc"
+)
+
+column_types = cols(
+  player_id = "c",  # Parsed later (factor)
+  first_name = "c",
+  last_name = "c",
+  hand = "c",       # Parsed later (factor)
+  birth_date = "c", # Parsed later (needs to specify format)     
+  ioc = "c"         # Parsed later (factor)
+)
+
+
+players_atp_DF <- load_data('./data/tennis_atp', "atp_players.csv", column_types, col_names)
+players_wta_DF <- load_data('./data/tennis_wta', "wta_players.csv", column_types, col_names)
+
+players_DF <- bind_rows(list(ATP = players_atp_DF, WTA = players_wta_DF), .id = "league") %>%
+  mutate(
+    league = factor(league),
+    player_id = factor(player_id),
+    hand = factor(hand),
+    birth_date = suppressWarnings(parse_date(birth_date, format="%Y%m%d")),
+    ioc = factor(ioc))
+```
+
+### Merging ATP and WTA rankings CSV files
+
+```{r, echo=FALSE}
+col_names = c("ranking_date", "rank", "player", "points")
+column_types = cols(
+  ranking_date = "c", # Parsed later (needs to specify format)
+  rank = "i",
+  player = "c",       # Parsed later (factor)
+  points = "i"
+)
+
+
+rankings_atp_DF <- load_data('./data/tennis_atp', "atp_rankings_(70|80|90|00|10)s.csv", column_types) %>%
+  bind_rows(load_data('./data/tennis_atp', "atp_rankings_(20)s.csv", column_types, col_names))
+
+
+col_names = c("ranking_date", "rank", "player", "points", "undefined")
+column_types = cols(
+  ranking_date = "c", # Parsed later (needs to specify format)
+  rank = "i",
+  player = "c",       # Parsed later (factor)
+  points = "i",
+  undefined = "c"     # Extra column
+)
+
+rankings_wta_DF <- load_data('./data/tennis_wta', "wta_rankings_(80|90|00|20)s.csv", column_types, col_names) %>%
+  bind_rows(load_data('./data/tennis_wta', "wta_rankings_(10)s.csv", column_types)) %>%
+  select(c("ranking_date", "rank", "player", "points"))
+
+
+rankings_DF <- bind_rows(list(ATP = rankings_atp_DF, WTA = rankings_wta_DF), .id = "league") %>%
+  mutate(
+    league = factor(league),
+    ranking_date = parse_date(ranking_date, format="%Y%m%d"),
+    player = factor(player))
+```
+
 ### EDA
 
 #### Number of matches per year
@@ -171,10 +237,55 @@ ggplot(combined_DF %>% filter(!is.na(winner_hand) & !is.na(loser_hand)) %>%
   facet_wrap(~league, nrow=1)
 ```
 
+#### Round statistics
+
+Visualize the average match length by round type
+```{r, echo=FALSE}
+
+# Get lower and upper whiskers
+ylim = boxplot.stats((combined_DF %>% filter(!is.na(minutes)))$minutes)$stats[c(1, 5)]
+
+ggplot(combined_DF %>% filter(!is.na(minutes)) %>% group_by(league, round),
+       aes(round, minutes)) +
+  geom_boxplot(aes(fill=league), outlier.shape = NA) +
+  coord_cartesian(ylim = ylim * 1.5) +
+  labs(x="Winner hand", y="Loser hand", title="Box plot for match duration by round")
+```
+
+
 #### Rank difference
 
-Visualize the distribution of rank difference of players in matches. Notice is gaussian with 0 mean.
+Visualize the average rank by player age
+```{r, echo=FALSE}
 
+ggplot(players_DF %>% select(league, player_id, birth_date) %>%
+         inner_join(rankings_DF %>% select(league, player, ranking_date, rank), by = (c("league" = "league", "player_id" = "player"))) %>%
+         mutate(age = floor(time_length(difftime(ranking_date, birth_date), "years"))) %>%
+         filter(age > 10, age < 60) %>%
+         group_by(league, age) %>% summarise(avg_rank = mean(rank)),
+       aes(age, avg_rank)) +
+  geom_line(aes(color=league)) +
+  scale_x_continuous(breaks=seq(10, 60, 5)) +
+  scale_y_reverse() +
+  labs(x="Player Age", y="Average rank", title="Average Rank by Age")
+```
+
+Visualize the average rank by player age (only looking at top 10)
+```{r, echo=FALSE}
+
+ggplot(players_DF %>% select(league, player_id, birth_date) %>%
+         inner_join(rankings_DF %>% select(league, player, ranking_date, rank), by = (c("league" = "league", "player_id" = "player"))) %>%
+         mutate(age = floor(time_length(difftime(ranking_date, birth_date), "years"))) %>%
+         filter(age > 10, age < 60, rank < 10) %>%
+         group_by(league, age) %>% summarise(avg_rank = mean(rank)),
+       aes(age, avg_rank)) +
+  geom_line(aes(color=league)) +
+  scale_x_continuous(breaks=seq(10, 60, 5)) +
+  scale_y_reverse() +
+  labs(x="Player Age", y="Average rank", title="Average Rank by Age (Top 10)")
+```
+
+Visualize the distribution of rank difference of players in matches. Notice is gaussian with 0 mean.
 ```{r, echo=FALSE}
 ggplot(combined_DF %>% filter(!is.na(winner_rank) & !is.na(loser_rank)) %>% 
          group_by(league, winner_rank, loser_rank) %>% summarise(rank_difference = winner_rank - loser_rank, .groups = 'drop'),
