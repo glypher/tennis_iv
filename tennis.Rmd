@@ -23,7 +23,7 @@ load_packages <- function(package_names) {
   sapply(list.of.packages, require, character.only = TRUE)
 }
 
-load_packages(c('rmarkdown', 'tidyverse', 'lubridate'))
+load_packages(c('rmarkdown', 'tidyverse', 'lubridate', 'reshape2'))
 ```
 
 ### Merging ATP and WTA matches CVS files
@@ -34,7 +34,7 @@ load_data <- function(directory, regex, column_types, col_names=TRUE) {
     lapply( (function (file) read_csv(file, col_types = column_types, col_names = col_names)) ) %>% dplyr::bind_rows()
 }
 
-column_types = cols(
+column_types <- cols(
   best_of = 'c',        # Parsed later (factor)
   round = 'c',          # Parsed later (factor)
   tourney_id = 'c',     # Parsed later (factor)
@@ -96,7 +96,7 @@ combined_DF <- bind_rows(list(ATP = singles_atp_DF, WTA = singles_wta_DF), .id =
   separate(col = tourney_id, into=c("year", "tourney_id"), sep="-", extra="merge") %>%
   mutate(league = factor(league),
          best_of = factor(best_of, ordered = TRUE, levels = c("3", "5")),
-         round = factor(round, ordered = TRUE),
+         round = factor(round, ordered = TRUE, levels = c("Q4", "ER", "BR", "RR", "R128", "R64", "R32", "R16", "QF", "SF", "F")),
          
          tourney_name = factor(tourney_name),
          tourney_level = factor(tourney_level),
@@ -118,7 +118,12 @@ combined_DF <- bind_rows(list(ATP = singles_atp_DF, WTA = singles_wta_DF), .id =
          
          draw_size = suppressWarnings(as.numeric(draw_size)),
          winner_seed = suppressWarnings(as.numeric(winner_seed)),
-         loser_seed = suppressWarnings(as.numeric(loser_seed))
+         loser_seed = suppressWarnings(as.numeric(loser_seed)),
+         
+         w_1stPercWon = (w_1stWon / w_1stIn),
+         l_1stPercWon = (l_1stWon / l_1stIn),
+         w_breaks = (l_bpFaced - l_bpSaved),
+         l_breaks = (w_bpFaced - l_bpSaved)
          )
 
 
@@ -133,11 +138,11 @@ combined_DF <- bind_rows(list(ATP = singles_atp_DF, WTA = singles_wta_DF), .id =
 ### Merging ATP and WTA player CSV files 
 
 ```{r, echo=FALSE}
-col_names = c(
+col_names <- c(
   "player_id", "first_name", "last_name", "hand", "birth_date", "ioc"
 )
 
-column_types = cols(
+column_types <- cols(
   player_id = "c",  # Parsed later (factor)
   first_name = "c",
   last_name = "c",
@@ -162,8 +167,8 @@ players_DF <- bind_rows(list(ATP = players_atp_DF, WTA = players_wta_DF), .id = 
 ### Merging ATP and WTA rankings CSV files
 
 ```{r, echo=FALSE}
-col_names = c("ranking_date", "rank", "player", "points")
-column_types = cols(
+col_names <- c("ranking_date", "rank", "player", "points")
+column_types <- cols(
   ranking_date = "c", # Parsed later (needs to specify format)
   rank = "i",
   player = "c",       # Parsed later (factor)
@@ -175,8 +180,8 @@ rankings_atp_DF <- load_data('./data/tennis_atp', "atp_rankings_(70|80|90|00|10)
   bind_rows(load_data('./data/tennis_atp', "atp_rankings_(20)s.csv", column_types, col_names))
 
 
-col_names = c("ranking_date", "rank", "player", "points", "undefined")
-column_types = cols(
+col_names <- c("ranking_date", "rank", "player", "points", "undefined")
+column_types <- cols(
   ranking_date = "c", # Parsed later (needs to specify format)
   rank = "i",
   player = "c",       # Parsed later (factor)
@@ -243,9 +248,10 @@ Visualize the average match length by round type
 ```{r, echo=FALSE}
 
 # Get lower and upper whiskers
-ylim = boxplot.stats((combined_DF %>% filter(!is.na(minutes)))$minutes)$stats[c(1, 5)]
+ylim <- boxplot.stats((combined_DF %>% filter(!is.na(minutes)))$minutes)$stats[c(1, 5)]
 
-ggplot(combined_DF %>% filter(!is.na(minutes)) %>% group_by(league, round),
+ggplot(combined_DF %>% filter(!is.na(minutes)) %>% group_by(league, round) %>%
+         filter(round != "BR", round != "ER", round != "Q4"),
        aes(round, minutes)) +
   geom_boxplot(aes(fill=league), outlier.shape = NA) +
   coord_cartesian(ylim = ylim * 1.5) +
@@ -270,19 +276,19 @@ ggplot(players_DF %>% select(league, player_id, birth_date) %>%
   labs(x="Player Age", y="Average rank", title="Average Rank by Age")
 ```
 
-Visualize the average rank by player age (only looking at top 10)
+Visualize the average rank by player age (only looking at top 20)
 ```{r, echo=FALSE}
 
 ggplot(players_DF %>% select(league, player_id, birth_date) %>%
          inner_join(rankings_DF %>% select(league, player, ranking_date, rank), by = (c("league" = "league", "player_id" = "player"))) %>%
          mutate(age = floor(time_length(difftime(ranking_date, birth_date), "years"))) %>%
-         filter(age > 10, age < 60, rank < 10) %>%
+         filter(age > 10, age < 60, rank < 20) %>%
          group_by(league, age) %>% summarise(avg_rank = mean(rank)),
        aes(age, avg_rank)) +
   geom_line(aes(color=league)) +
   scale_x_continuous(breaks=seq(10, 60, 5)) +
   scale_y_reverse() +
-  labs(x="Player Age", y="Average rank", title="Average Rank by Age (Top 10)")
+  labs(x="Player Age", y="Average rank", title="Average Rank by Age (Top 20)")
 ```
 
 Visualize the distribution of rank difference of players in matches. Notice is gaussian with 0 mean.
@@ -294,4 +300,38 @@ ggplot(combined_DF %>% filter(!is.na(winner_rank) & !is.na(loser_rank)) %>%
   scale_color_manual(values=c('blue','red')) +
   labs(x="Winner rank difference", y="Number of matches", title="Player rank difference of played matches") +
   theme_classic()
+```
+
+
+
+#### Serve statistics
+
+Visualize the percentage of serves won if 1st serve is inside the court (How strong players 1st serve is)
+```{r, echo=FALSE}
+ggplot(combined_DF %>% select(league, w_1stPercWon) %>% rename(perc_won = w_1stPercWon) %>%
+         bind_rows(combined_DF %>% select(league, l_1stPercWon) %>% rename(perc_won = l_1stPercWon)) %>%
+         filter(!is.na(perc_won)),
+       aes(perc_won, group=league, fill=league)) +
+  geom_density() +
+  facet_wrap(~league) +
+  labs(x="Percentage won", y="Density", title="Percentage of 1st serves won (if serve is in)")
+```
+
+Correlation between serves and breaks with match wins
+```{r, echo=FALSE}
+serves_correlation <- cor(
+  combined_DF %>%
+    select(w_1stIn, w_1stWon, w_2ndWon, w_breaks) %>%
+    filter(!is.na(w_1stIn), !is.na(w_1stWon), !is.na(w_2ndWon), !is.na(w_breaks)) %>%
+    rename(fstIn = w_1stIn, fstWon = w_1stWon, sndWon = w_2ndWon, breaks = w_breaks) %>% mutate(win = 1) %>%
+    bind_rows(combined_DF %>%
+                select(l_1stIn, l_1stWon, l_2ndWon, l_breaks) %>%
+                filter(!is.na(l_1stIn), !is.na(l_1stWon), !is.na(l_2ndWon), !is.na(l_breaks)) %>%
+                rename(fstIn = l_1stIn, fstWon = l_1stWon, sndWon = l_2ndWon, breaks = l_breaks) %>% mutate(win = 0))
+)
+
+ggplot(data = melt(serves_correlation), aes(x = Var1, y = Var2, fill = value)) + 
+  geom_tile() +
+  scale_fill_viridis_c() +
+  labs(x="Variable 1", y="Variable 2", title="Correlation Matrix for serves and breaks")
 ```
