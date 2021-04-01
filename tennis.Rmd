@@ -6,27 +6,27 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo=TRUE)
 ```
 
 ## ATP Tennis Visualisation
 
 This project is about tennis ATP results
 
-```{r, echo=FALSE}
+```{r, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
 load_packages <- function(package_names) {
   list.of.packages <- as.vector(package_names)
   new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
   if(length(new.packages)) {
-    install.packages(new.packages)
+    install.packages(new.packages, repos = "http://cran.us.r-project.org")
   }
   sapply(list.of.packages, require, character.only = TRUE)
 }
 
-load_packages(c('rmarkdown', 'tidyverse', 'lubridate', 'reshape2'))
+load_packages(c('rmarkdown', 'tidyverse', 'lubridate', 'reshape2', 'viridis', 'maps', 'RJSONIO'))
 ```
 
-### Merging ATP and WTA matches CVS files
+#### Merging ATP and WTA matches CVS files
 
 ```{r, echo=FALSE}
 load_data <- function(directory, regex, column_types, col_names=TRUE) {
@@ -135,7 +135,7 @@ combined_DF <- bind_rows(list(ATP = singles_atp_DF, WTA = singles_wta_DF), .id =
 #                       cols( winner_entry = "c", loser_entry="c"))
 ```
 
-### Merging ATP and WTA player CSV files 
+#### Merging ATP and WTA player CSV files
 
 ```{r, echo=FALSE}
 col_names <- c(
@@ -164,7 +164,7 @@ players_DF <- bind_rows(list(ATP = players_atp_DF, WTA = players_wta_DF), .id = 
     ioc = factor(ioc))
 ```
 
-### Merging ATP and WTA rankings CSV files
+#### Merging ATP and WTA rankings CSV files
 
 ```{r, echo=FALSE}
 col_names <- c("ranking_date", "rank", "player", "points")
@@ -334,4 +334,48 @@ ggplot(data = melt(serves_correlation), aes(x = Var1, y = Var2, fill = value)) +
   geom_tile() +
   scale_fill_viridis_c() +
   labs(x="Variable 1", y="Variable 2", title="Correlation Matrix for serves and breaks")
+```
+
+#### Tourney statistics
+
+Plot the top tourney matches player per year
+```{r, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
+top_tourney <- combined_DF %>% count(tourney_name) %>% top_n(6)
+ggplot(combined_DF %>% filter(tourney_name %in% top_tourney$tourney_name) %>% group_by(tourney_name) %>% count(year)) + 
+  geom_line(aes(x=year, y=n, color=tourney_name), size=1) +
+  labs(x="Year", y="Number of matches", color="Tourney", title="Matches per year of top tournaments") +
+  theme_minimal()
+```
+
+Plot the location on the map of the tourneys. Get the latitude and coordonates from tourney name using openstreetmap
+
+```{r, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
+get_coordonates <- function(df) {
+  long <- double(nrow(df))
+  lat <- double(nrow(df))
+
+  for (row in 1:nrow(df)) {
+    name <- df[row, "tourney_name"]
+    url <- paste("http://nominatim.openstreetmap.org/search?city=", name$tourney_name, "&limit=1&format=json", sep="")
+    data <- fromJSON(url)
+    if(is.vector(data)){
+      long[row] <- data[[1]]$lon
+      lat[row] <- data[[1]]$lat
+    }
+  }
+
+  return (data.frame(tourney_name=df$tourney_name, long=long, lat=lat) %>% mutate(
+    tourney_name=as.character(tourney_name),
+    long=as.double(long),
+    lat=as.double(lat)
+  ))
+}
+
+tourney_coordonates_DF <- get_coordonates(combined_DF %>% count(tourney_name) %>% top_n(50)) %>% filter(long!=0 & lat!=0)
+ggplot(map_data("world"), aes(x=long, y=lat)) +
+  geom_polygon(aes(group=group, fill=region ), color="white") +
+  geom_text(data=tourney_coordonates_DF, aes(label=tourney_name), size=3, hjust=0.5) +
+  geom_point(data=tourney_coordonates_DF, color="red", size=2) +
+  scale_fill_viridis_d() +
+  theme_void() + theme(legend.position = "none")
 ```
