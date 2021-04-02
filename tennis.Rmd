@@ -201,6 +201,17 @@ rankings_DF <- bind_rows(list(ATP = rankings_atp_DF, WTA = rankings_wta_DF), .id
     player = factor(player))
 ```
 
+#### Load Country Codes CSV file
+```{r, echo=FALSE}
+column_types <- cols(
+  country = "c",
+  ioc = "c"
+)
+
+country_DF <- load_data('./data', "country_codes.csv", column_types)
+```
+
+
 ### EDA
 
 #### Number of matches per year
@@ -378,4 +389,53 @@ ggplot(map_data("world"), aes(x=long, y=lat)) +
   geom_point(data=tourney_coordonates_DF, color="red", size=2) +
   scale_fill_viridis_d() +
   theme_void() + theme(legend.position = "none")
+```
+
+
+
+Plot top 10 countries by number of Grand Slams won for ATP and WTA
+```{r, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
+
+country_atp_g_wins <- combined_DF %>%
+  filter(league == 'ATP', round == 'F', tourney_level == 'G') %>%
+  group_by(league) %>% count(winner_ioc, name = "tourney_wins") %>%
+  slice_max(tourney_wins, n = 10) %>%
+  left_join(country_DF, by=c("winner_ioc" = "ioc")) %>%
+  mutate(country=replace(country, winner_ioc == 'USA', 'USA')) %>%
+  ungroup()
+
+maps_atp_g_wins <- map_data("world", region = country_atp_g_wins$country) %>%
+  filter(is.na(subregion) | subregion != 'Alaska'& subregion != 'Hawaii') %>%
+  left_join(country_atp_g_wins %>% select(country, tourney_wins), by = c("region" = "country")) %>%
+  mutate(region = fct_reorder(region, tourney_wins, .desc = TRUE))
+
+ggplot(maps_atp_g_wins,  aes(x = long, y = lat)) +
+  geom_map(map = maps_atp_g_wins, aes(map_id = region, fill=region)) +
+  facet_wrap(~region + tourney_wins, scale="free", labeller = label_wrap_gen(multi_line = FALSE)) +
+  theme_void() +
+  labs(title="Top 10 countries by number of ATP Grand Slams won")
+```
+
+
+```{r, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
+
+country_wta_g_wins <- combined_DF %>%
+  filter(league == 'WTA', round == 'F', tourney_level == 'G') %>%
+  group_by(league) %>% count(winner_ioc, name = "tourney_wins") %>%
+  slice_max(tourney_wins, n = 10) %>%
+  left_join(country_DF, by=c("winner_ioc" = "ioc")) %>%
+  mutate(country=replace(country, winner_ioc == 'USA', 'USA')) %>%
+  mutate(country=replace(country, winner_ioc == 'GBR', 'UK')) %>%
+  ungroup()
+
+maps_wta_g_wins <- map_data("world", region = country_wta_g_wins$country) %>%
+  filter(is.na(subregion) | subregion != 'Alaska'& subregion != 'Hawaii') %>%
+  left_join(country_wta_g_wins %>% select(country, tourney_wins), by = c("region" = "country")) %>%
+  mutate(region = fct_reorder(region, tourney_wins, .desc = TRUE))
+
+ggplot(maps_wta_g_wins,  aes(x = long, y = lat)) +
+  geom_map(map = maps_wta_g_wins, aes(map_id = region, fill=region)) +
+  facet_wrap(~region + tourney_wins, scale="free", labeller = label_wrap_gen(multi_line = FALSE)) +
+  theme_void() +
+  labs(title="Top 10 countries by number of WTA Grand Slams won")
 ```
