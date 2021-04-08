@@ -3,6 +3,7 @@ title: "tennis"
 author: "Mihai Matei, Catalin Stefan Cernat 511DS"
 date: "3/24/2021"
 output: html_document
+runtime: shiny
 ---
 
 ```{r setup, include=FALSE}
@@ -23,7 +24,7 @@ load_packages <- function(package_names) {
   sapply(list.of.packages, require, character.only = TRUE)
 }
 
-load_packages(c('rmarkdown', 'tidyverse', 'lubridate', 'reshape2', 'viridis', 'maps', 'RJSONIO'))
+load_packages(c('rmarkdown', 'tidyverse', 'lubridate', 'reshape2', 'viridis', 'maps', 'RJSONIO', 'glmnet', "shiny", "shinydashboard"))
 ```
 
 #### Merging ATP and WTA matches CVS files
@@ -438,4 +439,166 @@ ggplot(maps_wta_g_wins,  aes(x = long, y = lat)) +
   facet_wrap(~region + tourney_wins, scale="free", labeller = label_wrap_gen(multi_line = FALSE)) +
   theme_void() +
   labs(title="Top 10 countries by number of WTA Grand Slams won")
+```
+
+
+### Regression models for predicting winner player's rank
+
+Dashboard for linear models
+```{r, echo=FALSE}
+
+split_data <- function(data, test) {
+  spec = c(train = 1 - test, test = test)
+  N = nrow(data)
+  
+  set.seed(Sys.time())
+  data_split = sample(cut( seq(N), N * cumsum(c(0, spec)), labels = names(spec) ))
+  
+  return(split(data, data_split))
+}
+
+data_set <- combined_DF %>% filter(year > 1980) %>% 
+  select(c(winner_rank, league, year, surface, tourney_level, winner_hand, winner_age,
+           loser_hand, loser_age, round, minutes, w_ace, w_df, l_ace, l_df)) %>%
+  na.omit() %>%
+  split_data(0.1)
+
+
+
+build_linear_model <- function(type, formula, data, kfolds) {
+  
+  if (type == "lm") {
+    lmodel <- lm(formula, data) # OLS library
+    model <- list(lmodel,
+                  step(lmodel, trace=0),
+                  step(lmodel, trace=0, k=log(nrow(data))))
+    names(model) <- list('lm', 'aic', 'bic')
+  } else {
+    data_matrix = model.matrix(~.+0, data)
+    # https://web.stanford.edu/~hastie/TALKS/enet_talk.pdf alpha==0(ridge), alpha==1(lasso)
+    alpha <- if (type == "lasso") 1 else 0
+
+    model = cv.glmnet(x=data_matrix[,2:ncol(data_matrix)], y=data_matrix[,1], alpha=alpha,
+              lambda=NULL, nfolds=kfolds)
+  }
+
+  return(model)
+}
+
+lm_models <- build_linear_model("lm", winner_rank ~ ., data_set$train, 5)
+lm_models$lasso <- build_linear_model("lasso", winner_rank ~ ., data_set$train, 5)
+lm_models$ridge <- build_linear_model("ridge", winner_rank ~ ., data_set$train, 5)
+
+ui <- dashboardPage(
+  dashboardHeader(title = "Winner Rank"),
+  dashboardSidebar(
+    div("Regression Models"),
+    sidebarMenu(
+      menuItem("Linear Model", tabName = "lm", icon = icon("th")),
+      menuItem("Linear Model with AIC", tabName = "lm_aic", icon = icon("th")),
+      menuItem("Linear Model with BIC", tabName = "lm_bic", icon = icon("th")),
+      menuItem("LASSO regression", tabName = "lasso", icon = icon("th")),
+      menuItem("RIDGE regression", tabName = "ridge", icon = icon("th"))
+    )
+  ),
+
+  dashboardBody(
+    tabItems(
+      tabItem(tabName = "lm",
+              fluidRow(
+                h3("Plain old Linear Model"),
+                box(plotOutput("lm", width=600, height = 400))),
+              fluidRow(
+                box(width=600, h4("Model Summary"),
+                    verbatimTextOutput("lm_summary")))
+      ),
+      
+      tabItem(tabName = "lm_aic",
+              fluidRow(
+                h3("Linear Model with Akaike Information Criterion"),
+                box(plotOutput("lm_aic", width=600, height = 400))),
+              fluidRow(
+                box(width=600, h4("Model Summary"),
+                    verbatimTextOutput("lm_aic_summary")))
+      ),
+      
+      tabItem(tabName = "lm_bic",
+              fluidRow(
+                h3("Plain old Linear Model"),
+                box(plotOutput("lm_bic", width=600, height = 400))),
+              fluidRow(
+                box(width=600, h4("Model Summary"),
+                    verbatimTextOutput("lm_bic_summary")))
+      ),
+      
+      tabItem(tabName = "lasso",
+              fluidRow(
+                h3("Plain old Linear Model"),
+                box(plotOutput("lm_lasso", width=600, height = 400))),
+              fluidRow(
+                box(width=600, h4("Model Summary"),
+                    verbatimTextOutput("lm_lasso_summary")))
+      ),
+      
+      tabItem(tabName = "ridge",
+              fluidRow(
+                h3("Plain old Linear Model"),
+                box(plotOutput("lm_ridge", width=600, height = 400))),
+              fluidRow(
+                box(width=600, h4("Model Summary"),
+                    verbatimTextOutput("lm_ridge_summary")))
+      )
+    )
+  )
+)
+
+# Define server logic for random distribution app ----
+server <- function(input, output) {
+  
+  plot_residuals <- function(model, name) {
+    residuals <- residuals(model)
+    ggplot(data.frame(Residuals=abs(residuals), Predictions=predict(model)), aes(Predictions, Residuals)) +
+      geom_point(color="blue") +
+      labs(title=paste0("Homoscedascity for residuals of ", name)) +
+      theme_bw() + theme(plot.title = element_text(hjust = 0.5))
+  }
+
+  output$lm <- renderPlot({
+    plot_residuals(lm_models$lm, "Liniar Model")
+  })
+  output$lm_summary <- renderPrint({
+    summary(lm_models$lm)
+  })
+  
+  output$lm_aic <- renderPlot({
+    plot_residuals(lm_models$aic, "Liniar Model with AIC criterion")
+  })
+  output$lm_aic_summary <- renderPrint({
+    summary(lm_models$aic)
+  })
+  
+  output$lm_bic <- renderPlot({
+    plot_residuals(lm_models$bic, "Liniar Model with BIC criterion")
+  })
+  output$lm_bic_summary <- renderPrint({
+    summary(lm_models$bic)
+  })
+  
+  output$lm_lasso <- renderPlot({
+    plot_residuals(lm_models$lasso, "Lasso LM Model")
+  })
+  output$lm_lasso_summary <- renderPrint({
+    summary(lm_models$lasso)
+  })
+  
+  output$lm_ridge <- renderPlot({
+    plot_residuals(lm_models$ridge, "Ridge LM Model")
+  })
+  output$lm_ridge_summary <- renderPrint({
+    summary(lm_models$ridge)
+  })
+  
+}
+
+shinyApp(ui, server)
 ```
