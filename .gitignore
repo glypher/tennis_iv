@@ -4,6 +4,7 @@
 
 # Ignore data folder
 data/
+test.R
 
 # Session Data files
 .RData
