@@ -2,8 +2,10 @@
 title: "tennis"
 author: "Mihai Matei, Catalin Stefan Cernat 511DS"
 date: "3/24/2021"
-output: html_document
-runtime: shiny
+output:
+  html_document:
+    df_print: paged
+#runtime: shiny
 ---
 
 ```{r setup, include=FALSE}
@@ -19,12 +21,12 @@ load_packages <- function(package_names) {
   list.of.packages <- as.vector(package_names)
   new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
   if(length(new.packages)) {
-    install.packages(new.packages, repos = "http://cran.us.r-project.org")
+    install.packages(new.packages, dependencies=TRUE, repos = "http://cran.us.r-project.org")
   }
-  sapply(list.of.packages, require, character.only = TRUE)
+  sapply(list.of.packages, require, character.only=TRUE)
 }
 
-load_packages(c('rmarkdown', 'tidyverse', 'lubridate', 'reshape2', 'viridis', 'maps', 'RJSONIO', 'glmnet', "shiny", "shinydashboard", "caret", "kernlab", "e1071", "xgboost"))
+load_packages(c('rmarkdown', 'tidyverse', 'lubridate', 'reshape2', 'viridis', 'maps', 'RJSONIO', 'glmnet', "shiny", "shinydashboard", "caret", "kernlab", "e1071", "xgboost", "plotly"))
 slice <- dplyr::slice
 ```
 
@@ -444,6 +446,7 @@ ggplotly(x)
 ### Regression models for predicting winner player's rank
 
 Dashboard for linear models
+
 ```{r, echo=FALSE}
 
 split_data <- function(data, test) {
@@ -506,7 +509,7 @@ ui <- dashboardPage(
       tabItem(tabName = "lm",
               fluidRow(
                 h3("Plain old Linear Model"),
-                box(plotOutput("lm", width=600, height = 400))),
+                box(width=600, height = 400, plotOutput("lm", width=600, height = 400))),
               fluidRow(
                 box(width=600, h4("Model Summary"),
                     verbatimTextOutput("lm_summary")))
@@ -515,7 +518,7 @@ ui <- dashboardPage(
       tabItem(tabName = "lm_aic",
               fluidRow(
                 h3("Linear Model with Akaike Information Criterion"),
-                box(plotOutput("lm_aic", width=600, height = 400))),
+                box(width=600, height = 400, plotOutput("lm_aic", width=600, height = 400))),
               fluidRow(
                 box(width=600, h4("Model Summary"),
                     verbatimTextOutput("lm_aic_summary")))
@@ -524,7 +527,7 @@ ui <- dashboardPage(
       tabItem(tabName = "lm_bic",
               fluidRow(
                 h3("Plain old Linear Model"),
-                box(plotOutput("lm_bic", width=600, height = 400))),
+                box(width=600, height = 400, plotOutput("lm_bic", width=600, height = 400))),
               fluidRow(
                 box(width=600, h4("Model Summary"),
                     verbatimTextOutput("lm_bic_summary")))
@@ -533,7 +536,7 @@ ui <- dashboardPage(
       tabItem(tabName = "lasso",
               fluidRow(
                 h3("Plain old Linear Model"),
-                box(plotOutput("lm_lasso", width=600, height = 400))),
+                box(width=600, height = 400, plotOutput("lm_lasso", width=600, height = 400))),
               fluidRow(
                 box(width=600, h4("Model Summary"),
                     verbatimTextOutput("lm_lasso_summary")))
@@ -542,7 +545,7 @@ ui <- dashboardPage(
       tabItem(tabName = "ridge",
               fluidRow(
                 h3("Plain old Linear Model"),
-                box(plotOutput("lm_ridge", width=600, height = 400))),
+                box(width=600, height = 400, plotOutput("lm_ridge", width=600, height = 400))),
               fluidRow(
                 box(width=600, h4("Model Summary"),
                     verbatimTextOutput("lm_ridge_summary")))
@@ -599,7 +602,7 @@ server <- function(input, output) {
   
 }
 
-shinyApp(ui, server)
+shinyApp(ui, server, options=list(height=800))
 ```
 
 
