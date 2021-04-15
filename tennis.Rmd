@@ -6,6 +6,7 @@ output:
   html_document:
     df_print: paged
 #runtime: shiny
+runtime: shiny
 ---
 
 ```{r setup, include=FALSE}
@@ -26,7 +27,7 @@ load_packages <- function(package_names) {
   sapply(list.of.packages, require, character.only=TRUE)
 }
 
-load_packages(c('rmarkdown', 'tidyverse', 'lubridate', 'reshape2', 'viridis', 'maps', 'RJSONIO', 'glmnet', "shiny", "shinydashboard", "caret", "kernlab", "e1071", "xgboost", "plotly"))
+load_packages(c('rmarkdown', 'tidyverse', 'lubridate', 'reshape2', 'viridis', 'maps', 'RJSONIO', 'glm', "shiny", "shinydashboard", "caret", "kernlab", "e1071", "xgboost", "plotly", "shapr"))
 slice <- dplyr::slice
 ```
 
@@ -459,37 +460,46 @@ split_data <- function(data, test) {
   return(split(data, data_split))
 }
 
+# Setting up features and target
 data_set <- combined_DF %>% filter(year > 1980) %>% 
-  select(c(winner_rank, league, year, surface, tourney_level, winner_hand, winner_age,
-           loser_hand, loser_age, round, minutes, w_ace, w_df, l_ace, l_df)) %>%
+  select(c(winner_rank, year, winner_age,
+           loser_age, minutes, w_ace, w_df, l_ace, l_df)) %>%
   na.omit() %>%
   split_data(0.1)
 
 
+# Regression Models
+r_models <- c()
+# Linear with different IC
+r_models$lm <- lm(winner_rank ~ ., data_set$train)
+r_models$aic <- step(r_models$lm, trace=0)
+r_models$bic <- step(r_models$lm, trace=0, k=log(nrow(data_set$train)))
 
-build_linear_model <- function(type, formula, data, kfolds) {
-  
-  if (type == "lm") {
-    lmodel <- lm(formula, data) # OLS library
-    model <- list(lmodel,
-                  step(lmodel, trace=0),
-                  step(lmodel, trace=0, k=log(nrow(data))))
-    names(model) <- list('lm', 'aic', 'bic')
-  } else {
-    data_matrix = model.matrix(~.+0, data)
-    # https://web.stanford.edu/~hastie/TALKS/enet_talk.pdf alpha==0(ridge), alpha==1(lasso)
-    alpha <- if (type == "lasso") 1 else 0
+# Generalized Linear model
+r_models$glm <- glm(winner_rank ~ .  , family=quasi(), data=data_set$train)
 
-    model = cv.glmnet(x=data_matrix[,2:ncol(data_matrix)], y=data_matrix[,1], alpha=alpha,
-              lambda=NULL, nfolds=kfolds)
-  }
+# XgBoost
+data_matrix <- c()
+data_matrix$train <- c()
+data_matrix$train$X = as.matrix(data_set$train)[,2:ncol(data_set$train)]
+data_matrix$train$Y = as.matrix(data_set$train)[,1]
+data_matrix$test <- c()
+data_matrix$test$X = as.matrix(data_set$test)[,2:ncol(data_set$test)]
+data_matrix$test$Y = as.matrix(data_set$test)[,1]
+r_models$xgb <- xgboost(data=data_matrix$train$X, label=data_matrix$train$Y,
+                        nrounds=2000, objective = "reg:squarederror", verbose=0)
 
-  return(model)
+ui_tab <- function(name, text, width=600) {
+  tabItem(tabName = name,
+          fluidRow(
+            h3(text),
+            box(plotOutput(paste0(name, "_res"), width=width, height = 400), width=width, collapsible=TRUE)),
+          fluidRow(
+            box(plotOutput(paste0(name, "_sha"), width=width, height = 400), width=width, collapsible=TRUE)),
+          fluidRow(
+            box(h4("Model Summary"),
+            verbatimTextOutput(paste0(name, "_s")), width=width, collapsible=TRUE)))
 }
-
-lm_models <- build_linear_model("lm", winner_rank ~ ., data_set$train, 5)
-lm_models$lasso <- build_linear_model("lasso", winner_rank ~ ., data_set$train, 5)
-lm_models$ridge <- build_linear_model("ridge", winner_rank ~ ., data_set$train, 5)
 
 ui <- dashboardPage(
   dashboardHeader(title = "Winner Rank"),
@@ -497,112 +507,72 @@ ui <- dashboardPage(
     div("Regression Models"),
     sidebarMenu(
       menuItem("Linear Model", tabName = "lm", icon = icon("th")),
-      menuItem("Linear Model with AIC", tabName = "lm_aic", icon = icon("th")),
-      menuItem("Linear Model with BIC", tabName = "lm_bic", icon = icon("th")),
-      menuItem("LASSO regression", tabName = "lasso", icon = icon("th")),
-      menuItem("RIDGE regression", tabName = "ridge", icon = icon("th"))
+      menuItem("Linear Model with AIC", tabName = "aic", icon = icon("th")),
+      menuItem("Linear Model with BIC", tabName = "bic", icon = icon("th")),
+      menuItem("General Linear Model", tabName = "glm", icon = icon("th")),
+      menuItem("XGBoost", tabName = "xgb", icon = icon("th"))
     )
   ),
 
   dashboardBody(
     tabItems(
-      tabItem(tabName = "lm",
-              fluidRow(
-                h3("Plain old Linear Model"),
-                box(width=600, height = 400, plotOutput("lm", width=600, height = 400))),
-              fluidRow(
-                box(width=600, h4("Model Summary"),
-                    verbatimTextOutput("lm_summary")))
-      ),
-      
-      tabItem(tabName = "lm_aic",
-              fluidRow(
-                h3("Linear Model with Akaike Information Criterion"),
-                box(width=600, height = 400, plotOutput("lm_aic", width=600, height = 400))),
-              fluidRow(
-                box(width=600, h4("Model Summary"),
-                    verbatimTextOutput("lm_aic_summary")))
-      ),
-      
-      tabItem(tabName = "lm_bic",
-              fluidRow(
-                h3("Plain old Linear Model"),
-                box(width=600, height = 400, plotOutput("lm_bic", width=600, height = 400))),
-              fluidRow(
-                box(width=600, h4("Model Summary"),
-                    verbatimTextOutput("lm_bic_summary")))
-      ),
-      
-      tabItem(tabName = "lasso",
-              fluidRow(
-                h3("Plain old Linear Model"),
-                box(width=600, height = 400, plotOutput("lm_lasso", width=600, height = 400))),
-              fluidRow(
-                box(width=600, h4("Model Summary"),
-                    verbatimTextOutput("lm_lasso_summary")))
-      ),
-      
-      tabItem(tabName = "ridge",
-              fluidRow(
-                h3("Plain old Linear Model"),
-                box(width=600, height = 400, plotOutput("lm_ridge", width=600, height = 400))),
-              fluidRow(
-                box(width=600, h4("Model Summary"),
-                    verbatimTextOutput("lm_ridge_summary")))
+      ui_tab("lm", "Plain Linear Model"),
+      ui_tab("aic", "Linear Model with Akaike Information Criterion"),
+      ui_tab("bic", "Linear Model with Bayesian Information Criterion"),
+      ui_tab("glm", "General Linear Model"),
+      ui_tab("xgb", "Extreme Gradient Boosting Tree")
       )
     )
   )
-)
 
-# Define server logic for random distribution app ----
 server <- function(input, output) {
   
-  plot_residuals <- function(model, name) {
-    residuals <- residuals(model)
-    ggplot(data.frame(Residuals=abs(residuals), Predictions=predict(model)), aes(Predictions, Residuals)) +
+  plot_residuals <- function(model, name, data) {
+    y_hat <- tryCatch(
+      {predict(model, data %>% select(-c(winner_rank)))},
+      error=function(cond) {
+        predict(model, as.matrix(data %>% select(-c(winner_rank))))
+      }
+    )
+    residuals <- data$winner_rank - y_hat
+    ggplot(data.frame(Residuals=abs(residuals), Predictions=y_hat), aes(Predictions, Residuals)) +
       geom_point(color="blue") +
       labs(title=paste0("Homoscedascity for residuals of ", name)) +
       theme_bw() + theme(plot.title = element_text(hjust = 0.5))
   }
+  
+  plot_shapr <- function(model, data_set) {
+    explainer <- shapr(data_set$train %>% select(-c(winner_rank)), model)
+    # for first 4 test samples
+    explanation <- explain(data_set$test %>% select(-c(winner_rank)) %>% slice(1:4), approach="gaussian",
+                           explainer=explainer, prediction_zero=mean(data_set$train$winner_rank))
+    plot(explanation, plot_phi0 = FALSE)
+  }
 
-  output$lm <- renderPlot({
-    plot_residuals(lm_models$lm, "Liniar Model")
-  })
-  output$lm_summary <- renderPrint({
-    summary(lm_models$lm)
-  })
+  output$lm_res <- renderPlot({plot_residuals(r_models$lm, "Linear Model", data_set$train)})
+  output$lm_sha <- renderPlot({plot_shapr(r_models$lm, data_set)})
+  output$lm_s <- renderPrint({summary(r_models$lm)})
   
-  output$lm_aic <- renderPlot({
-    plot_residuals(lm_models$aic, "Liniar Model with AIC criterion")
-  })
-  output$lm_aic_summary <- renderPrint({
-    summary(lm_models$aic)
-  })
+  output$aic_res <- renderPlot({plot_residuals(r_models$aic, "AIC Linear Model", data_set$train)})
+  output$aic_sha <- renderPlot({plot_shapr(r_models$aic, data_set)})
+  output$aic_s <- renderPrint({summary(r_models$aic)})
   
-  output$lm_bic <- renderPlot({
-    plot_residuals(lm_models$bic, "Liniar Model with BIC criterion")
-  })
-  output$lm_bic_summary <- renderPrint({
-    summary(lm_models$bic)
-  })
+  output$bic_res <- renderPlot({plot_residuals(r_models$bic, "BIC Linear Model", data_set$train)})
+  output$bic_sha <- renderPlot({plot_shapr(r_models$bic, data_set)})
+  output$bic_s <- renderPrint({summary(r_models$bic)})
   
-  output$lm_lasso <- renderPlot({
-    plot_residuals(lm_models$lasso, "Lasso LM Model")
-  })
-  output$lm_lasso_summary <- renderPrint({
-    summary(lm_models$lasso)
-  })
-  
-  output$lm_ridge <- renderPlot({
-    plot_residuals(lm_models$ridge, "Ridge LM Model")
-  })
-  output$lm_ridge_summary <- renderPrint({
-    summary(lm_models$ridge)
-  })
-  
+  output$glm_res <- renderPlot({plot_residuals(r_models$glm, "General Linear Model", data_set$train)})
+  output$glm_sha <- renderPlot({plot_shapr(r_models$glm, data_set)})
+  output$glm_s <- renderPrint({summary(r_models$glm)})
+
+  output$xgb_res <- renderPlot({plot_residuals(r_models$xgb, "Extreme Gradient Boosting", data_set$train)})
+
+  output$xgb_sha <- renderPlot({plot_shapr(r_models$xgb, data_set)})
+
+  output$xgb_s <- renderPrint({summary(r_models$xgb)})
 }
 
-shinyApp(ui, server, options=list(height=800))
+shinyApp(ui, server, options=list(height=1200))
 ```
 
 
