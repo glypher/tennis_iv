@@ -497,6 +497,9 @@ ui_tab <- function(name, text, width=600) {
           fluidRow(
             box(plotOutput(paste0(name, "_sha"), width=width, height = 400), width=width, collapsible=TRUE)),
           fluidRow(
+            box(h4("Model Performance"),
+                verbatimTextOutput(paste0(name, "_p")), width=width, collapsible=TRUE)),
+          fluidRow(
             box(h4("Model Summary"),
             verbatimTextOutput(paste0(name, "_s")), width=width, collapsible=TRUE)))
 }
@@ -525,6 +528,18 @@ ui <- dashboardPage(
     )
   )
 
+rsquared <- function(true, predicted, has_intercept) {
+  sse <- sum((predicted - true)^2)
+  sst <- ifelse(has_intercept, sum((true - mean(true))^2), sum(true^2))
+  rsq <- 1 - sse / sst
+
+  return (round(rsq, digits=5))
+}
+
+mean_squared_error <- function(true, predicted) {
+  return( round(mean((predicted - true) ^ 2), digits=5) )
+}
+
 server <- function(input, output) {
   
   plot_residuals <- function(model, name, data) {
@@ -549,26 +564,49 @@ server <- function(input, output) {
     plot(explanation, plot_phi0 = FALSE)
   }
 
+  print_performance <- function(model, data_set) {
+    y_hat_train <- tryCatch(
+      {predict(model, data_set$train %>% select(-c(winner_rank)))},
+      error=function(cond) {
+        predict(model, as.matrix(data_set$train %>% select(-c(winner_rank))))
+      }
+    )
+    y_hat_test <- tryCatch(
+      {predict(model, data_set$test %>% select(-c(winner_rank)))},
+      error=function(cond) {
+        predict(model, as.matrix(data_set$test %>% select(-c(winner_rank))))
+      }
+    )
+
+    paste0('   TRAIN R^2: ', rsquared(data_set$train$winner_rank, y_hat_train, TRUE),
+           '   TRAIN MSE: ', mean_squared_error(data_set$train$winner_rank, y_hat_train),
+           '   TEST R^2: ', rsquared(data_set$test$winner_rank, y_hat_test, TRUE),
+           '   TEST MSE: ', mean_squared_error(data_set$test$winner_rank, y_hat_test))
+  }
+
   output$lm_res <- renderPlot({plot_residuals(r_models$lm, "Linear Model", data_set$train)})
   output$lm_sha <- renderPlot({plot_shapr(r_models$lm, data_set)})
+  output$lm_p <- renderPrint({print_performance(r_models$lm, data_set)})
   output$lm_s <- renderPrint({summary(r_models$lm)})
   
   output$aic_res <- renderPlot({plot_residuals(r_models$aic, "AIC Linear Model", data_set$train)})
   output$aic_sha <- renderPlot({plot_shapr(r_models$aic, data_set)})
+  output$aic_p <- renderPrint({print_performance(r_models$aic, data_set)})
   output$aic_s <- renderPrint({summary(r_models$aic)})
   
   output$bic_res <- renderPlot({plot_residuals(r_models$bic, "BIC Linear Model", data_set$train)})
   output$bic_sha <- renderPlot({plot_shapr(r_models$bic, data_set)})
+  output$bic_p <- renderPrint({print_performance(r_models$bic, data_set)})
   output$bic_s <- renderPrint({summary(r_models$bic)})
   
   output$glm_res <- renderPlot({plot_residuals(r_models$glm, "General Linear Model", data_set$train)})
   output$glm_sha <- renderPlot({plot_shapr(r_models$glm, data_set)})
+  output$glm_p <- renderPrint({print_performance(r_models$glm, data_set)})
   output$glm_s <- renderPrint({summary(r_models$glm)})
 
   output$xgb_res <- renderPlot({plot_residuals(r_models$xgb, "Extreme Gradient Boosting", data_set$train)})
-
   output$xgb_sha <- renderPlot({plot_shapr(r_models$xgb, data_set)})
-
+  output$xgb_p <- renderPrint({print_performance(r_models$xgb, data_set)})
   output$xgb_s <- renderPrint({summary(r_models$xgb)})
 }
 
