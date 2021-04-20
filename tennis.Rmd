@@ -27,8 +27,9 @@ load_packages <- function(package_names) {
   sapply(list.of.packages, require, character.only=TRUE)
 }
 
-load_packages(c('rmarkdown', 'tidyverse', 'lubridate', 'reshape2', 'viridis', 'maps', 'RJSONIO', 'glm', "shiny", "shinydashboard", "caret", "kernlab", "e1071", "xgboost", "plotly", "shapr"))
+load_packages(c('rmarkdown', 'tidyverse', 'lubridate', 'reshape2', 'viridis', 'maps', 'RJSONIO', 'glm', "shiny", "shinydashboard", "caret", "kernlab", "e1071", "xgboost", "plotly", "shapr", "arm", "shinyWidgets"))
 slice <- dplyr::slice
+select <- dplyr::select
 ```
 
 #### Merging ATP and WTA matches CVS files
@@ -461,7 +462,7 @@ split_data <- function(data, test) {
 }
 
 # Setting up features and target
-data_set <- combined_DF %>% filter(year > 1980) %>% 
+data_set <- combined_DF %>% filter(year > 1980) %>%
   select(c(winner_rank, year, winner_age,
            loser_age, minutes, w_ace, w_df, l_ace, l_df)) %>%
   na.omit() %>%
@@ -555,7 +556,7 @@ server <- function(input, output) {
       labs(title=paste0("Homoscedascity for residuals of ", name)) +
       theme_bw() + theme(plot.title = element_text(hjust = 0.5))
   }
-  
+
   plot_shapr <- function(model, data_set) {
     explainer <- shapr(data_set$train %>% select(-c(winner_rank)), model)
     # for first 4 test samples
@@ -616,21 +617,52 @@ shinyApp(ui, server, options=list(height=1200))
 
 ### Classification models for predicting who will win a match
 ```{r, echo=FALSE}
+average_stat <- function(stat, league) {
+  w_stat <- paste('winner_', stat, sep = "")
+  l_stat <- paste('loser_', stat, sep = "")
+
+  return ((combined_DF %>%
+            select(stat_1 = w_stat, stat_2 = l_stat) %>%
+            filter(!is.na(stat_1), !is.na(stat_2), league == league) %>%
+            mutate(avg_stat = (stat_1 + stat_2) / 2) %>%
+            summarise(value = mean(avg_stat)))$value)
+}
+
+max_or_default <- function(values, default) {
+  if (all(is.na(values))) {
+    return (default)
+  } else {
+    return (max(values, na.rm = TRUE))
+  }
+}
+
 get_player_stats <- function(end_date, period) {
+
+  # Compute average values to replace nas
+  avg_age_atp <- average_stat('age', 'ATP')
+  avg_age_wta <- average_stat('age', 'WTA')
+  avg_ht_atp <- average_stat('ht', 'ATP')
+  avg_ht_wta <- average_stat('ht', 'WTA')
+
   recent_matches_DF <- combined_DF %>% filter(tourney_date >= end_date - years(period), tourney_date < end_date)
   
   # Transform matches data frame - separate winner and loser stats on different rows
   recent_matches_t_DF <- recent_matches_DF %>%
-    rename(player_id=winner_id, bpFaced=w_bpFaced, bpSaved=w_bpSaved, breaks=w_breaks, aces=w_ace, p1stWon = w_1stWon,  p1stIn = w_1stIn, df = w_df) %>%
+    rename(player_id=winner_id, bpFaced=w_bpFaced, bpSaved=w_bpSaved, breaks=w_breaks,
+           aces=w_ace, p1stWon = w_1stWon,  p1stIn = w_1stIn, df = w_df, age = winner_age,
+           ht = winner_ht) %>%
     bind_rows(recent_matches_DF %>%
-                rename(player_id=loser_id, bpFaced=l_bpFaced, bpSaved=l_bpSaved, breaks=l_breaks, aces = l_ace, p1stWon = l_1stWon,  p1stIn = l_1stIn, df = l_df))
-  
+                rename(player_id=loser_id, bpFaced=l_bpFaced, bpSaved=l_bpSaved, breaks=l_breaks,
+                       aces = l_ace, p1stWon = l_1stWon,  p1stIn = l_1stIn, df = l_df, age = loser_age,
+                       ht = loser_ht))
   
   # Create a players statistics data frame
   players_stats_DF <- recent_matches_t_DF %>% group_by(league, player_id) %>%
     replace_na(list(breaks=0, matches=0, aces=0, p1stWon = 0, p1stIn = 0, df = 0)) %>%
     summarise(matches = n(), breaksP = sum(breaks) / n(), acesP = sum(aces) / n(),
-              dfP = sum(df) / n(), p1stWonP = sum(p1stWon) / sum(p1stIn)) %>%
+              dfP = sum(df) / n(), p1stWonP = sum(p1stWon) / sum(p1stIn),
+              age = max_or_default(age, if(league[1] == 'ATP') avg_age_atp else avg_age_wta),
+              ht = max_or_default(ht, if(league[1] == 'ATP') avg_ht_atp else avg_ht_wta)) %>%
     ungroup() %>%
     replace_na(list(p1stWonP=0))
   
@@ -640,37 +672,24 @@ get_player_stats <- function(end_date, period) {
 get_observations <- function(matches, player_stats_period) {
   earliest_tourney <- matches %>% slice(which.min(tourney_date)) %>% .$tourney_date
   player_stats <- get_player_stats(earliest_tourney, player_stats_period)
-  
-  average_ht <- (combined_DF %>%
-    select(winner_ht, loser_ht) %>%
-    filter(!is.na(winner_ht), !is.na(loser_ht)) %>%
-    mutate(winner_ht = (winner_ht + loser_ht) / 2) %>%
-    summarise(value = mean(winner_ht)))$value
-  
-  average_age <- (combined_DF %>%
-    select(winner_age, loser_age) %>%
-    filter(!is.na(winner_age), !is.na(loser_age)) %>%
-    mutate(winner_age = (winner_age + loser_age) / 2) %>%
-    summarise(value = mean(winner_age)))$value
 
   observations <- matches %>%
     left_join(player_stats, by=c("winner_id"="player_id", "league"="league")) %>%
     left_join(player_stats, by=c("loser_id"="player_id", "league"="league"), suffix=c(".w", ".l")) %>%
-    replace_na(list(winner_ht=average_ht, loser_ht=average_ht, winner_age=average_age, loser_age=average_age,
-                    matches.w=0, matches.l=0, breaksP.w=0, breaksP.l=0, winner_rank=0, loser_rank=0,
-                    winner_rank_points=0, loser_rank_points=0,
+    replace_na(list(winner_rank=0, loser_rank=0, winner_rank_points=0, loser_rank_points=0, surface='Hard',
+                    age.w=0, age.l=0, ht.w=0, ht.l=0, matches.w=0, matches.l=0, breaksP.w=0, breaksP.l=0,
                     acesP.w=0, acesP.l=0, dfP.w=0, dfP.l=0, p1stWonP.w=0, p1stWonP.l=0))
   
   print(colSums(is.na(observations)))
   
   n_rows <- observations %>% nrow()
-  observations_pos <- observations %>% sample_n(n_rows / 2, replace=FALSE)
+  observations_pos <- observations %>% sample_n((n_rows + 1)/ 2, replace=FALSE)
   observations_neg <- anti_join(observations, observations_pos)
   
-  observations_pos <- observations_pos %>% mutate(age_d = winner_age - loser_age,
-                       ht_d = winner_ht - loser_ht,
-                       rank_d = winner_rank - loser_rank,
+  observations_pos <- observations_pos %>% mutate(rank_d = winner_rank - loser_rank,
                        points_d = winner_rank_points - loser_rank_points,
+                       age_d = age.w- age.l,
+                       ht_d = ht.w - ht.l,
                        matches_d = matches.w - matches.l,
                        breaksP_d = breaksP.w - breaksP.l,
                        acesP_d = acesP.w - acesP.l,
@@ -679,10 +698,10 @@ get_observations <- function(matches, player_stats_period) {
                        target = 1) %>%
     select(league, age_d, ht_d, rank_d, points_d, matches_d, breaksP_d, acesP_d, dfP_d, p1stWonP_d, target)
   
-  observations_neg <- observations_neg %>% mutate(age_d = loser_age - winner_age,
-                       ht_d = loser_ht - winner_ht,
-                       rank_d = loser_rank - winner_rank,
+  observations_neg <- observations_neg %>% mutate(rank_d = loser_rank - winner_rank,
                        points_d = loser_rank_points - winner_rank_points,
+                       age_d = age.l- age.w,
+                       ht_d = ht.l - ht.w,
                        matches_d = matches.l - matches.w,
                        breaksP_d = breaksP.l - breaksP.w,
                        acesP_d = acesP.l - acesP.w,
@@ -690,40 +709,27 @@ get_observations <- function(matches, player_stats_period) {
                        p1stWonP_d = p1stWonP.l - p1stWonP.w,
                        target = -1) %>%
     select(league, age_d, ht_d, rank_d, points_d, matches_d, breaksP_d, acesP_d, dfP_d, p1stWonP_d, target)
-  
-  
-  
+
   return (observations_pos %>%
             bind_rows(observations_neg) %>%
             mutate(target = factor(target))
           )
 }
 
-
 # Data Split
-# train_matches <- NULL
-# for (x in c(2015:2017)) {
-#   current_year = parse_date('1980-01-01') + years(x - 1980)
-#   matches_temp <- combined_DF %>% filter(tourney_date >= current_year, tourney_date < current_year + years(1))
-#   if (!is.null(train_matches)) {
-#     train_matches <- train_matches %>% bind_rows(matches_temp)
-#   } else {
-#     train_matches <- bind_rows(matches_temp)
-#   }
-# }
+train_matches <- combined_DF %>% filter(tourney_date >= '2017-01-01', tourney_date < '2018-01-01' )
+valid_matches <- combined_DF %>% filter(tourney_date >= '2018-01-01', tourney_date < '2019-01-01' )
+test_matches <- combined_DF %>% filter(tourney_date >= '2019-01-01', tourney_date < '2020-01-01' )
+test_grand_slams <- test_matches %>% filter(tourney_level == 'G')
+ui_filtered_matches <- test_grand_slams
 
-train_matches = combined_DF %>% filter(tourney_date >= '2017-01-01', tourney_date < '2018-01-01' )
-valid_matches = combined_DF %>% filter(tourney_date >= '2018-01-01', tourney_date < '2019-01-01' )
-test_matches = combined_DF %>% filter(tourney_date >= '2019-01-01', tourney_date < '2020-01-01' )
-
-# Modify Data
+# Observations
 observations_train <- get_observations(train_matches, 5)
 observations_valid <- get_observations(valid_matches, 5)
 observations_test <- get_observations(test_matches, 5)
 
 
-# Classification
-
+# Train Models
 train_rows <- observations_train %>% nrow()
 train_idx <- c(1:train_rows)
 valid_rows <- observations_valid %>% nrow()
@@ -745,11 +751,6 @@ knn_model <- train(target ~ .,
                    trControl = trControl,
                    tuneGrid = grid)
 
-knn_model
-plot(knn_model)
-knn_predict <- predict(knn_model, newdata = observations_test)
-confusionMatrix(knn_predict, observations_test$target)
-
 # Random Forest
 grid <- expand.grid(.mtry = (1:(ncol(observations_train) - 1)))
 rf_model <- train(target ~ .,
@@ -759,22 +760,12 @@ rf_model <- train(target ~ .,
                  tuneGrid = grid,
                  ntree = 15)
 
-rf_model
-plot(rf_model)
-rf_predict <- predict(rf_model, newdata = observations_test)
-confusionMatrix(rf_predict, observations_test$target)
-
-
 
 # Logistic Regression
-logr_model <- train(target ~ .,
+lgreg_model <- train(target ~ .,
                  data = observations_train %>% bind_rows(observations_valid), 
-                 method = 'glm', 
+                 method = 'bayesglm',
                  trControl = trControl)
-
-logr_model
-logr_predict <- predict(logr_model, newdata = observations_test)
-confusionMatrix(logr_predict, observations_test$target)
 
 
 # SVM
@@ -785,11 +776,6 @@ svm_model <- train(target ~ .,
                  preProcess = c("center","scale"),
                  tuneGrid = grid,
                  trControl = trControl)
-
-svm_model
-plot(svm_model)
-svm_predict <- predict(svm_model, newdata = observations_test)
-confusionMatrix(svm_predict, observations_test$target)
 
 
 # XG Boost
@@ -802,14 +788,116 @@ grid <- expand.grid(
   min_child_weight = 1,
   subsample = 1
 )
-
 xgb_model <- train(target ~ .,
                  data = observations_train %>% bind_rows(observations_valid), 
                  method = 'xgbTree', 
                  trControl = trControl)
 
+knn_model
+plot(knn_model)
+knn_predict <- predict(knn_model, newdata = observations_test)
+confusionMatrix(knn_predict, observations_test$target)
+
+rf_model
+plot(rf_model)
+rf_predict <- predict(rf_model, newdata = observations_test)
+confusionMatrix(rf_predict, observations_test$target)
+
 xgb_model
 plot(xgb_model)
 xgb_predict <- predict(xgb_model, newdata = observations_test)
 confusionMatrix(xgb_predict, observations_test$target)
+
+svm_model
+plot(svm_model)
+svm_predict <- predict(svm_model, newdata = observations_test)
+confusionMatrix(svm_predict, observations_test$target)
+
+logr_model
+logr_predict <- predict(logr_model, newdata = observations_test)
+confusionMatrix(logr_predict, observations_test$target)
+
+
+class_ui <- dashboardPage(
+  dashboardHeader(title = "Classification"),
+  dashboardSidebar(
+    div("Model"),
+    sidebarMenu(
+      menuItem("Grand Slam Predictions", tabName = "gsp", icon = icon("th"))
+    )
+  ),
+
+  dashboardBody(
+    tabItems(
+      tabItem(tabName = "gsp",
+              fluidRow(
+                h3("Grand Slam Predictions"),
+                pickerInput(inputId="in_league", label="Select League", choices=c('WTA', 'ATP')),
+                pickerInput(inputId="in_tourney_name", label="Select Tourney", choices=c()),
+                pickerInput(inputId="in_tourney_round", label="Select Round", choices=c()),
+                pickerInput(inputId="in_tourney_match", label="Select Match", choices=c('000 - '))
+              ),
+              fluidRow(
+                h3("Odds"),
+                box(width=600, height = 400, plotOutput("odds_plot", width=600, height = 400))
+              )
+      )
+    )
+  )
+)
+
+class_server <- function(input, output, session) {
+  ui_filtered_matches <- reactive({
+    return (test_grand_slams %>% filter(league == input$in_league,
+                                        if (!is.null(input$in_tourney_name)) tourney_name == input$in_tourney_name else TRUE,
+                                        if (!is.null(input$in_tourney_round)) round == input$in_tourney_round else TRUE
+                                        )
+                                )
+  })
+
+  match <- reactive({
+    s_match_num <- strsplit(input$in_tourney_match, " - ")[[1]][1]
+    selected_match <- ui_filtered_matches() %>% filter(match_num == s_match_num)
+    return (selected_match)
+  })
+
+  observeEvent(ui_filtered_matches(), {
+    tourney_names <- lapply(test_grand_slams %>% filter(league == input$in_league)
+                            %>% distinct(tourney_name) %>% .$tourney_name, as.character)
+    rounds <- if (!is.null(input$in_tourney_name)) {
+      lapply(test_grand_slams %>% filter(league == input$in_league, tourney_name == input$in_tourney_name)
+                       %>% distinct(round) %>% .$round, as.character)
+    } else c()
+
+    matches <- ui_filtered_matches() %>% select(match_num, winner_name, loser_name) %>%
+      summarise(match_desc = paste0(match_num, " - ", winner_name, " VS ", loser_name)) %>%
+      .$match_desc
+
+    updatePickerInput(session = session, inputId="in_tourney_name",
+                      choices = tourney_names, selected = input$in_tourney_name)
+
+    updatePickerInput(session = session, inputId="in_tourney_round",
+                      choices = rounds, selected = input$in_tourney_round)
+
+    updatePickerInput(session = session, inputId="in_tourney_match",
+                      choices = matches)
+  })
+
+  observeEvent(match(), {
+    if (match() %>% nrow() > 0) {
+      obs <- get_observations(match(), 5)
+      logr_predict <- predict(lgreg_model, newdata = obs, type="prob")
+
+      w_name <- as.character(match() %>% .$winner_name)
+      l_name <- as.character(match() %>% .$loser_name)
+      odds_df <- tibble(name=c(l_name, w_name), probs = unlist(logr_predict))
+
+      output$odds_plot <- renderPlot({
+        odds_df %>% ggplot(aes(name, probs)) + geom_bar(stat="identity")
+      })
+    }
+  })
+}
+
+shinyApp(class_ui, class_server, options=list(height=800))
 ```
