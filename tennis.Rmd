@@ -813,8 +813,8 @@ plot(svm_model)
 svm_predict <- predict(svm_model, newdata = observations_test)
 confusionMatrix(svm_predict, observations_test$target)
 
-logr_model
-logr_predict <- predict(logr_model, newdata = observations_test)
+lgreg_model
+logr_predict <- predict(lgreg_model, newdata = observations_test)
 confusionMatrix(logr_predict, observations_test$target)
 
 
