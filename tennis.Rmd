@@ -445,6 +445,90 @@ ggplotly(x)
 ```
 
 
+### Player rank evolution
+
+Interactive page with ranking evolution of players
+
+```{r, echo=FALSE}
+ui <- fluidPage(
+  titlePanel("Player Statistics"),
+
+  sidebarLayout(
+    sidebarPanel(
+      awesomeRadio(
+        inputId = "league",
+        label = "League",
+        choices = c("ATP", "WTA"),
+        selected = "ATP",
+        status = "primary",
+        inline=TRUE
+      ),
+      sliderInput("max_rank",
+                  "Maximum player rank",
+                  min = 1,
+                  max = 1000,
+                  value = 100),
+      multiInput(
+        inputId = "players",
+        label = "Players:",
+        choices = c("Initializing...")
+      ),
+    ),
+
+    # Show a plot of the generated distribution
+    mainPanel(
+      plotOutput("rankPlot"),
+      tableOutput("playerTable")
+    )
+  )
+)
+
+server <- function(input, output, session) {
+  observeEvent(input$league, {
+    league_players <- uiRankPlayers() %>% filter(league==input$league)
+    updateMultiInput(
+      session=session,
+      inputId = "players",
+      choices=league_players$full_name
+      )
+  })
+
+  uiRankPlayers <- reactive({
+    max_ranking <- rankings_DF %>% rename(player_id=player) %>% group_by(player_id) %>% summarize(max_ranking=min(rank))
+
+    max_rank <- players_DF %>% mutate(birth_date=as.Date(birth_date), full_name=paste0(last_name, " ", first_name)) %>%
+      filter(birth_date > as.Date('1990-01-01')) %>%
+      inner_join(max_ranking, by=c("player_id")) %>% filter(max_ranking < input$max_rank)
+
+    return (max_rank)
+  })
+
+  uiPlayers <- reactive({
+    sel_players <- uiRankPlayers() %>% filter(full_name %in% input$players)
+    sel_players <- rankings_DF %>% rename(player_id=player) %>% inner_join(sel_players, by=c("player_id"))
+    return (sel_players)
+  })
+
+  observeEvent(uiPlayers(), {
+    output$rankPlot <- renderPlot({
+      ggplot(uiPlayers(),
+             aes(x=ranking_date, y=rank, group=full_name)) +
+        geom_line(aes(color=full_name), size=1) +
+        labs(x="Date", y="Rank", title="Evolution of rank of players") +
+        theme_classic()
+    })
+
+    player_stats <- uiPlayers() %>% distinct(full_name, birth_date, ioc, hand) %>%
+      mutate(birth_date=format(birth_date, "%Y-%m-%d")) %>%
+      rename(Name=full_name, Birthdate=birth_date, Country=ioc, Hand=hand)
+    output$playerTable <- renderTable(player_stats %>% select(Name, Country, Birthdate, Hand))
+  })
+
+}
+
+shinyApp(ui, server, options=list(height=600))
+```
+
 ### Regression models for predicting winner player's rank
 
 Dashboard for linear models
