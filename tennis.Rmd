@@ -210,9 +210,8 @@ country_DF <- load_data('./data', "country_codes.csv", column_types)
 
 ### EDA
 
-#### Number of matches per year
+#### Tourney statistics
 Visualize how the number of matcher per league evoluted along each year. Notice the impact of the coronavirul pandemy.
-
 ```{r, echo=FALSE}
 ggplot(combined_DF %>% group_by(league, year) %>% summarise(no_matches = length(year), .groups = 'drop'),
        aes(x=year, y=no_matches, group=league)) +
@@ -225,10 +224,112 @@ ggplot(combined_DF %>% group_by(league, year) %>% summarise(no_matches = length(
   theme_classic()
 ```
 
+Plot the location on the map of the tourneys. Get the latitude and coordonates from tourney name using openstreetmap
+```{r, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
+get_coordonates <- function(df) {
+  long <- double(nrow(df))
+  lat <- double(nrow(df))
+
+  for (row in 1:nrow(df)) {
+    name <- df[row, "tourney_name"]
+    url <- paste("http://nominatim.openstreetmap.org/search?city=", name$tourney_name, "&limit=1&format=json", sep="")
+    data <- fromJSON(url)
+    if(is.vector(data)){
+      long[row] <- data[[1]]$lon
+      lat[row] <- data[[1]]$lat
+    }
+  }
+
+  return (data.frame(tourney_name=df$tourney_name, long=long, lat=lat) %>% mutate(
+          tourney_name=as.character(tourney_name),
+          long=as.double(long),
+          lat=as.double(lat)
+  ))
+}
+
+tourney_coordonates_DF <- get_coordonates(combined_DF %>% count(tourney_name) %>% top_n(50)) %>% filter(long!=0 & lat!=0)
+ggplot(map_data("world"), aes(x=long, y=lat)) +
+        geom_polygon(aes(group=group, fill=region ), color="white") +
+        geom_text(data=tourney_coordonates_DF, aes(label=tourney_name), size=3, hjust=0.5) +
+        geom_point(data=tourney_coordonates_DF, color="red", size=2) +
+        scale_fill_viridis_d() +
+        theme_void() + theme(legend.position = "none")
+```
+
+Plot top 10 countries by number of Grand Slams won for ATP and WTA
+```{r, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
+
+country_atp_g_wins <- combined_DF %>%
+  filter(league == 'ATP', round == 'F', tourney_level == 'G') %>%
+  group_by(league) %>% count(winner_ioc, name = "tourney_wins") %>%
+  slice_max(tourney_wins, n = 10) %>%
+  left_join(country_DF, by=c("winner_ioc" = "ioc")) %>%
+  mutate(country=replace(country, winner_ioc == 'USA', 'USA')) %>%
+  ungroup()
+
+maps_atp_g_wins <- map_data("world", region = country_atp_g_wins$country) %>%
+  filter(is.na(subregion) | subregion != 'Alaska'& subregion != 'Hawaii') %>%
+  left_join(country_atp_g_wins %>% select(country, tourney_wins), by = c("region" = "country")) %>%
+  mutate(region = fct_reorder(region, tourney_wins, .desc = TRUE))
+
+ggplot(maps_atp_g_wins,  aes(x = long, y = lat)) +
+  geom_map(map = maps_atp_g_wins, aes(map_id = region, fill=region)) +
+  facet_wrap(~region + tourney_wins, scale="free", labeller = label_wrap_gen(multi_line = FALSE)) +
+  theme_void() +
+  labs(title="Top 10 countries by number of ATP Grand Slams won")
+```
+
+```{r, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
+
+country_wta_g_wins <- combined_DF %>%
+  filter(league == 'WTA', round == 'F', tourney_level == 'G') %>%
+  group_by(league) %>% count(winner_ioc, name = "tourney_wins") %>%
+  slice_max(tourney_wins, n = 10) %>%
+  left_join(country_DF, by=c("winner_ioc" = "ioc")) %>%
+  mutate(country=replace(country, winner_ioc == 'USA', 'USA')) %>%
+  mutate(country=replace(country, winner_ioc == 'GBR', 'UK')) %>%
+  ungroup()
+
+maps_wta_g_wins <- map_data("world", region = country_wta_g_wins$country) %>%
+  filter(is.na(subregion) | subregion != 'Alaska'& subregion != 'Hawaii') %>%
+  left_join(country_wta_g_wins %>% select(country, tourney_wins), by = c("region" = "country")) %>%
+  mutate(region = fct_reorder(region, tourney_wins, .desc = TRUE))
+
+ggplot(maps_wta_g_wins,  aes(x = long, y = lat)) +
+  geom_map(map = maps_wta_g_wins, aes(map_id = region, fill=region)) +
+  facet_wrap(~region + tourney_wins, scale="free", labeller = label_wrap_gen(multi_line = FALSE)) +
+  theme_void() +
+  labs(title="Top 10 countries by number of WTA Grand Slams won")
+```
+
+Plot the top tourney matches player per year
+```{r, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
+top_tourney <- combined_DF %>% count(tourney_name) %>% top_n(6)
+ggplot(combined_DF %>% filter(tourney_name %in% top_tourney$tourney_name) %>% group_by(tourney_name) %>% count(year)) + 
+  geom_line(aes(x=year, y=n, color=tourney_name), size=1) +
+  labs(x="Year", y="Number of matches", color="Tourney", title="Matches per year of top tournaments") +
+  theme_minimal()
+```
+
+
+#### Round statistics
+Visualize the average match length by round type
+```{r, echo=FALSE}
+
+# Get lower and upper whiskers
+ylim <- boxplot.stats((combined_DF %>% filter(!is.na(minutes)))$minutes)$stats[c(1, 5)]
+
+ggplot(combined_DF %>% filter(!is.na(minutes)) %>% group_by(league, round) %>%
+         filter(round != "BR", round != "ER", round != "Q4"),
+       aes(round, minutes)) +
+  geom_boxplot(aes(fill=league), outlier.shape = NA) +
+  coord_cartesian(ylim = ylim * 1.5) +
+  labs(x="Winner hand", y="Loser hand", title="Box plot for match duration by round")
+```
+
 #### Player hand statistics
 
 Visualize how many players in both leagues use left, right or both hands for backhand
-
 ```{r, echo=FALSE}
 ggplot(combined_DF %>% filter(!is.na(winner_hand)) %>% group_by(league, winner_id, winner_hand) %>% distinct(winner_id)) +
   geom_bar(aes(winner_hand, fill = league), position = "dodge") +
@@ -249,22 +350,37 @@ ggplot(combined_DF %>% filter(!is.na(winner_hand) & !is.na(loser_hand)) %>%
   facet_wrap(~league, nrow=1)
 ```
 
-#### Round statistics
+#### Serve statistics
 
-Visualize the average match length by round type
+Correlation between serves and breaks with match wins
 ```{r, echo=FALSE}
+serves_correlation <- cor(
+  combined_DF %>%
+    select(w_1stIn, w_1stWon, w_2ndWon, w_breaks) %>%
+    filter(!is.na(w_1stIn), !is.na(w_1stWon), !is.na(w_2ndWon), !is.na(w_breaks)) %>%
+    rename(fstIn = w_1stIn, fstWon = w_1stWon, sndWon = w_2ndWon, breaks = w_breaks) %>% mutate(win = 1) %>%
+    bind_rows(combined_DF %>%
+                select(l_1stIn, l_1stWon, l_2ndWon, l_breaks) %>%
+                filter(!is.na(l_1stIn), !is.na(l_1stWon), !is.na(l_2ndWon), !is.na(l_breaks)) %>%
+                rename(fstIn = l_1stIn, fstWon = l_1stWon, sndWon = l_2ndWon, breaks = l_breaks) %>% mutate(win = 0))
+)
 
-# Get lower and upper whiskers
-ylim <- boxplot.stats((combined_DF %>% filter(!is.na(minutes)))$minutes)$stats[c(1, 5)]
-
-ggplot(combined_DF %>% filter(!is.na(minutes)) %>% group_by(league, round) %>%
-         filter(round != "BR", round != "ER", round != "Q4"),
-       aes(round, minutes)) +
-  geom_boxplot(aes(fill=league), outlier.shape = NA) +
-  coord_cartesian(ylim = ylim * 1.5) +
-  labs(x="Winner hand", y="Loser hand", title="Box plot for match duration by round")
+ggplot(data = melt(serves_correlation), aes(x = Var1, y = Var2, fill = value)) + 
+  geom_tile() +
+  scale_fill_viridis_c() +
+  labs(x="Variable 1", y="Variable 2", title="Correlation Matrix for serves and breaks")
 ```
 
+Visualize the percentage of serves won if 1st serve is inside the court (How strong players 1st serve is)
+```{r, echo=FALSE}
+ggplot(combined_DF %>% select(league, w_1stPercWon) %>% rename(perc_won = w_1stPercWon) %>%
+         bind_rows(combined_DF %>% select(league, l_1stPercWon) %>% rename(perc_won = l_1stPercWon)) %>%
+         filter(!is.na(perc_won)),
+       aes(perc_won, group=league, fill=league)) +
+  geom_density() +
+  facet_wrap(~league) +
+  labs(x="Percentage won", y="Density", title="Percentage of 1st serves won (if serve is in)")
+```
 
 #### Rank difference
 
@@ -307,133 +423,6 @@ ggplot(combined_DF %>% filter(!is.na(winner_rank) & !is.na(loser_rank)) %>%
   scale_color_manual(values=c('blue','red')) +
   labs(x="Winner rank difference", y="Number of matches", title="Player rank difference of played matches") +
   theme_classic()
-```
-
-
-
-#### Serve statistics
-
-Visualize the percentage of serves won if 1st serve is inside the court (How strong players 1st serve is)
-```{r, echo=FALSE}
-ggplot(combined_DF %>% select(league, w_1stPercWon) %>% rename(perc_won = w_1stPercWon) %>%
-         bind_rows(combined_DF %>% select(league, l_1stPercWon) %>% rename(perc_won = l_1stPercWon)) %>%
-         filter(!is.na(perc_won)),
-       aes(perc_won, group=league, fill=league)) +
-  geom_density() +
-  facet_wrap(~league) +
-  labs(x="Percentage won", y="Density", title="Percentage of 1st serves won (if serve is in)")
-```
-
-Correlation between serves and breaks with match wins
-```{r, echo=FALSE}
-serves_correlation <- cor(
-  combined_DF %>%
-    select(w_1stIn, w_1stWon, w_2ndWon, w_breaks) %>%
-    filter(!is.na(w_1stIn), !is.na(w_1stWon), !is.na(w_2ndWon), !is.na(w_breaks)) %>%
-    rename(fstIn = w_1stIn, fstWon = w_1stWon, sndWon = w_2ndWon, breaks = w_breaks) %>% mutate(win = 1) %>%
-    bind_rows(combined_DF %>%
-                select(l_1stIn, l_1stWon, l_2ndWon, l_breaks) %>%
-                filter(!is.na(l_1stIn), !is.na(l_1stWon), !is.na(l_2ndWon), !is.na(l_breaks)) %>%
-                rename(fstIn = l_1stIn, fstWon = l_1stWon, sndWon = l_2ndWon, breaks = l_breaks) %>% mutate(win = 0))
-)
-
-ggplot(data = melt(serves_correlation), aes(x = Var1, y = Var2, fill = value)) + 
-  geom_tile() +
-  scale_fill_viridis_c() +
-  labs(x="Variable 1", y="Variable 2", title="Correlation Matrix for serves and breaks")
-```
-
-#### Tourney statistics
-
-Plot the top tourney matches player per year
-```{r, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
-top_tourney <- combined_DF %>% count(tourney_name) %>% top_n(6)
-ggplot(combined_DF %>% filter(tourney_name %in% top_tourney$tourney_name) %>% group_by(tourney_name) %>% count(year)) + 
-  geom_line(aes(x=year, y=n, color=tourney_name), size=1) +
-  labs(x="Year", y="Number of matches", color="Tourney", title="Matches per year of top tournaments") +
-  theme_minimal()
-```
-
-Plot the location on the map of the tourneys. Get the latitude and coordonates from tourney name using openstreetmap
-
-```{r, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
-get_coordonates <- function(df) {
-  long <- double(nrow(df))
-  lat <- double(nrow(df))
-
-  for (row in 1:nrow(df)) {
-    name <- df[row, "tourney_name"]
-    url <- paste("http://nominatim.openstreetmap.org/search?city=", name$tourney_name, "&limit=1&format=json", sep="")
-    data <- fromJSON(url)
-    if(is.vector(data)){
-      long[row] <- data[[1]]$lon
-      lat[row] <- data[[1]]$lat
-    }
-  }
-
-  return (data.frame(tourney_name=df$tourney_name, long=long, lat=lat) %>% mutate(
-    tourney_name=as.character(tourney_name),
-    long=as.double(long),
-    lat=as.double(lat)
-  ))
-}
-
-tourney_coordonates_DF <- get_coordonates(combined_DF %>% count(tourney_name) %>% top_n(50)) %>% filter(long!=0 & lat!=0)
-ggplot(map_data("world"), aes(x=long, y=lat)) +
-  geom_polygon(aes(group=group, fill=region ), color="white") +
-  geom_text(data=tourney_coordonates_DF, aes(label=tourney_name), size=3, hjust=0.5) +
-  geom_point(data=tourney_coordonates_DF, color="red", size=2) +
-  scale_fill_viridis_d() +
-  theme_void() + theme(legend.position = "none")
-```
-
-
-
-Plot top 10 countries by number of Grand Slams won for ATP and WTA
-```{r, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
-
-country_atp_g_wins <- combined_DF %>%
-  filter(league == 'ATP', round == 'F', tourney_level == 'G') %>%
-  group_by(league) %>% count(winner_ioc, name = "tourney_wins") %>%
-  slice_max(tourney_wins, n = 10) %>%
-  left_join(country_DF, by=c("winner_ioc" = "ioc")) %>%
-  mutate(country=replace(country, winner_ioc == 'USA', 'USA')) %>%
-  ungroup()
-
-maps_atp_g_wins <- map_data("world", region = country_atp_g_wins$country) %>%
-  filter(is.na(subregion) | subregion != 'Alaska'& subregion != 'Hawaii') %>%
-  left_join(country_atp_g_wins %>% select(country, tourney_wins), by = c("region" = "country")) %>%
-  mutate(region = fct_reorder(region, tourney_wins, .desc = TRUE))
-
-ggplot(maps_atp_g_wins,  aes(x = long, y = lat)) +
-  geom_map(map = maps_atp_g_wins, aes(map_id = region, fill=region)) +
-  facet_wrap(~region + tourney_wins, scale="free", labeller = label_wrap_gen(multi_line = FALSE)) +
-  theme_void() +
-  labs(title="Top 10 countries by number of ATP Grand Slams won")
-```
-
-
-```{r, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
-
-country_wta_g_wins <- combined_DF %>%
-  filter(league == 'WTA', round == 'F', tourney_level == 'G') %>%
-  group_by(league) %>% count(winner_ioc, name = "tourney_wins") %>%
-  slice_max(tourney_wins, n = 10) %>%
-  left_join(country_DF, by=c("winner_ioc" = "ioc")) %>%
-  mutate(country=replace(country, winner_ioc == 'USA', 'USA')) %>%
-  mutate(country=replace(country, winner_ioc == 'GBR', 'UK')) %>%
-  ungroup()
-
-maps_wta_g_wins <- map_data("world", region = country_wta_g_wins$country) %>%
-  filter(is.na(subregion) | subregion != 'Alaska'& subregion != 'Hawaii') %>%
-  left_join(country_wta_g_wins %>% select(country, tourney_wins), by = c("region" = "country")) %>%
-  mutate(region = fct_reorder(region, tourney_wins, .desc = TRUE))
-
-ggplot(maps_wta_g_wins,  aes(x = long, y = lat)) +
-  geom_map(map = maps_wta_g_wins, aes(map_id = region, fill=region)) +
-  facet_wrap(~region + tourney_wins, scale="free", labeller = label_wrap_gen(multi_line = FALSE)) +
-  theme_void() +
-  labs(title="Top 10 countries by number of WTA Grand Slams won")
 ```
 
 
