@@ -27,7 +27,7 @@ load_packages <- function(package_names) {
   sapply(list.of.packages, require, character.only=TRUE)
 }
 
-load_packages(c('rmarkdown', 'tidyverse', 'lubridate', 'reshape2', 'viridis', 'maps', 'RJSONIO', 'glm', "shiny", "shinydashboard", "caret", "kernlab", "e1071", "xgboost", "plotly", "shapr", "arm", "shinyWidgets"))
+load_packages(c('rmarkdown', 'tidyverse', 'lubridate', 'reshape2', 'viridis', 'maps', 'RJSONIO', 'glm', "shiny", "shinydashboard", "caret", "kernlab", "e1071", "xgboost", "plotly", "shapr", "arm", "shinyWidgets", "iml"))
 slice <- dplyr::slice
 select <- dplyr::select
 ```
@@ -700,7 +700,7 @@ shinyApp(ui, server, options=list(height=1200))
 
 
 ### Classification models for predicting who will win a match
-```{r, echo=FALSE}
+```{r, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
 average_stat <- function(stat, league) {
   w_stat <- paste('winner_', stat, sep = "")
   l_stat <- paste('loser_', stat, sep = "")
@@ -763,8 +763,6 @@ get_observations <- function(matches, player_stats_period) {
     replace_na(list(winner_rank=0, loser_rank=0, winner_rank_points=0, loser_rank_points=0, surface='Hard',
                     age.w=0, age.l=0, ht.w=0, ht.l=0, matches.w=0, matches.l=0, breaksP.w=0, breaksP.l=0,
                     acesP.w=0, acesP.l=0, dfP.w=0, dfP.l=0, p1stWonP.w=0, p1stWonP.l=0))
-  
-  print(colSums(is.na(observations)))
   
   n_rows <- observations %>% nrow()
   observations_pos <- observations %>% sample_n((n_rows + 1)/ 2, replace=FALSE)
@@ -865,9 +863,9 @@ svm_model <- train(target ~ .,
 # XG Boost
 grid <- expand.grid(
   nrounds = 50,
-  eta = c(0.05, 0.1),
-  max_depth = c(2, 4),
-  gamma = c(0.05, 0.1, 0.5),
+  eta = c(0.1, 0.3, 0.5),
+  max_depth = c(2, 4, 6),
+  gamma = c(0.0, 0.5),
   colsample_bytree = 1,
   min_child_weight = 1,
   subsample = 1
@@ -876,31 +874,130 @@ xgb_model <- train(target ~ .,
                  data = observations_train %>% bind_rows(observations_valid), 
                  method = 'xgbTree', 
                  trControl = trControl)
+```
 
-knn_model
-plot(knn_model)
-knn_predict <- predict(knn_model, newdata = observations_test)
-confusionMatrix(knn_predict, observations_test$target)
+#### Model interpretation
+```{r, echo=FALSE}
 
-rf_model
-plot(rf_model)
-rf_predict <- predict(rf_model, newdata = observations_test)
-confusionMatrix(rf_predict, observations_test$target)
+ui_tab <- function(name, text, width=600) {
+  tabItem(tabName = name,
+          fluidRow(
+            h3(text),
+            box(plotOutput(paste0(name, "_confusion"), width=width, height = 400), width=width, collapsible=TRUE)),
+          fluidRow(
+            box(plotOutput(paste0(name, "_shapley"), width=width, height = 400), width=width, collapsible=TRUE)),
+          fluidRow(
+            box(plotOutput(paste0(name, "_perf"), width=width, height = 400), width=width, collapsible=TRUE))
+  )
+}
 
-xgb_model
-plot(xgb_model)
-xgb_predict <- predict(xgb_model, newdata = observations_test)
-confusionMatrix(xgb_predict, observations_test$target)
+ui <- dashboardPage(
+  dashboardHeader(title = "Match Prediction"),
+  dashboardSidebar(
+    div("Classification Models"),
+    sidebarMenu(
+      menuItem("KNN", tabName = "knn", icon = icon("th")),
+      menuItem("Random Forest", tabName = "rf", icon = icon("th")),
+      menuItem("SVM", tabName = "svm", icon = icon("th")),
+      menuItem("Logistic Regression", tabName = "lgreg", icon = icon("th")),
+      menuItem("XGBoost", tabName = "xgb", icon = icon("th"))
+    )
+  ),
 
-svm_model
-plot(svm_model)
-svm_predict <- predict(svm_model, newdata = observations_test)
-confusionMatrix(svm_predict, observations_test$target)
+  dashboardBody(
+    tabItems(
+      ui_tab("knn", "KNN"),
+      ui_tab("rf", "Random Forest"),
+      ui_tab("svm", "SVM"),
+      ui_tab("lgreg", "Logistic Regression"),
+      ui_tab("xgb", "XGBoost")
+      )
+    )
+  )
 
-lgreg_model
-logr_predict <- predict(lgreg_model, newdata = observations_test)
-confusionMatrix(logr_predict, observations_test$target)
+server <- function(input, output) {
+  
+  plot_confusion <- function(model, observations) {
+    predictions <- predict(model, newdata = observations)
+    confusion <- confusionMatrix(predictions, observations$target)
+    confusion_values <- as.data.frame(confusion$table)
+    
+    ggplot(data = confusion_values, mapping = aes(x = Prediction, y = Reference)) +
+      geom_tile(aes(fill = Freq), colour = "white") +
+      geom_text(aes(label = sprintf("%1.0f", Freq)), vjust = 1, color = "white", size=12) +
+      scale_fill_viridis_c()
+  }
 
+  plot_shapley <- function(model, train, test) {
+    features <- train %>% select(-target) %>% as.data.frame()
+    predictor <- Predictor$new(model, data = features, y = train$target)
+    shapley <- Shapley$new(predictor, x.interest = test[1:15, -11])
+    
+    shapley$results %>% filter(class == 1) %>%
+      ggplot(aes(x = feature, y = phi)) +
+      geom_bar(stat = "identity") +
+      coord_flip()
+  }
+  
+  plot_performance_knn <- function(model) {
+    data <- melt(model$results %>% select(k, Accuracy, Kappa), id="k")
+    ggplot(data = data) +
+      geom_line(aes(x = k, y = value, color = variable)) +
+      geom_point(aes(x = k, y = value, fill = variable), shape=21, size=6, show.legend = FALSE) +
+      labs(x = "Neighbours", y = "Score", colour = "Metric")
+  }
+  
+  plot_performance_rf <- function(model) {
+    data <- melt(model$results %>% select(mtry, Accuracy, Kappa), id="mtry")
+    ggplot(data = data) +
+      geom_line(aes(x = mtry, y = value, color = variable)) +
+      geom_point(aes(x = mtry, y = value, fill = variable), shape=21, size=6, show.legend = FALSE) +
+      labs(x = "# Variables per split", y = "Score", colour = "Metric")
+  }
+  
+  plot_performance_svm <- function(model) {
+    data <- melt(model$results %>% select(C, Accuracy, Kappa), id="C")
+    ggplot(data = data) +
+      geom_line(aes(x = C, y = value, color = variable)) +
+      geom_point(aes(x = C, y = value, fill = variable), shape=21, size=6, show.legend = FALSE) +
+      labs(x = "C", y = "Score", colour = "Metric")
+  }
+  
+  plot_performance_xgb <- function(model) {
+    data <- melt(model$results %>% select(max_depth, gamma, eta, Accuracy, Kappa), id= c("max_depth", "gamma", "eta"))
+    ggplot(data = data) +
+      geom_line(aes(x = max_depth, y = value, color = variable)) +
+      geom_point(aes(x = max_depth, y = value, fill = variable), shape=21, size=6, show.legend = FALSE) +
+      facet_wrap(~gamma + eta, labeller = labeller(gamma = label_both, eta = label_both)) +
+      labs(x = "C", y = "Score", colour = "Metric")
+  }
+  
+  output$knn_confusion <- renderPlot({plot_confusion(knn_model, observations_test)})
+  output$knn_shapley <- renderPlot({plot_shapley(knn_model, observations_train, observations_test)})
+  output$knn_perf <- renderPlot({plot_performance_knn(knn_model)})
+  
+  output$rf_confusion <- renderPlot({plot_confusion(rf_model, observations_test)})
+  output$rf_shapley <- renderPlot({plot_shapley(rf_model, observations_train, observations_test)})
+  output$rf_perf <- renderPlot({plot_performance_rf(rf_model)})
+
+  output$svm_confusion <- renderPlot({plot_confusion(svm_model, observations_test)})
+  output$svm_shapley <- renderPlot({plot_shapley(svm_model, observations_train, observations_test)})
+  output$svm_perf <- renderPlot({plot_performance_svm(svm_model)})
+
+  output$lgreg_confusion <- renderPlot({plot_confusion(lgreg_model, observations_test)})
+  output$lgreg_shapley <- renderPlot({plot_shapley(lgreg_model, observations_train, observations_test)})
+  # output$lgreg_perf <- renderPlot({plot_performance_knn(lgreg_model)})
+
+  output$xgb_confusion <- renderPlot({plot_confusion(xgb_model, observations_test)})
+  output$xgb_shapley <- renderPlot({plot_shapley(xgb_model, observations_train, observations_test)})
+  output$xgb_perf <- renderPlot({plot_performance_xgb(xgb_model)})
+}
+
+shinyApp(ui, server, options=list(height=1200))
+```
+
+#### Interactive Prediction
+```{r, echo=FALSE}
 
 class_ui <- dashboardPage(
   dashboardHeader(title = "Classification"),
