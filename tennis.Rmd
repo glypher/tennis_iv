@@ -5,7 +5,7 @@ date: "3/24/2021"
 output:
   html_document:
     df_print: paged
-#runtime: shiny
+    code_folding: hide
 runtime: shiny
 ---
 
@@ -27,7 +27,7 @@ load_packages <- function(package_names) {
   sapply(list.of.packages, require, character.only=TRUE)
 }
 
-load_packages(c('rmarkdown', 'tidyverse', 'lubridate', 'reshape2', 'viridis', 'maps', 'RJSONIO', 'glm', "shiny", "shinydashboard", "caret", "kernlab", "e1071", "xgboost", "plotly", "shapr", "arm", "shinyWidgets", "iml"))
+load_packages(c('rmarkdown', 'tidyverse', 'lubridate', 'reshape2', 'viridis', 'maps', 'RJSONIO', "shiny", "shinydashboard", "caret", "kernlab", "e1071", "xgboost", "plotly", "shapr", "arm", "shinyWidgets", "iml", "gridExtra"))
 slice <- dplyr::slice
 select <- dplyr::select
 ```
@@ -211,9 +211,10 @@ country_DF <- load_data('./data', "country_codes.csv", column_types)
 ### EDA
 
 #### Tourney statistics
-Visualize how the number of matcher per league evoluted along each year. Notice the impact of the coronavirul pandemy.
-```{r, echo=FALSE}
-ggplot(combined_DF %>% group_by(league, year) %>% summarise(no_matches = length(year), .groups = 'drop'),
+Evolution of the number of matches in the sport of tennis in recent years. In the 1970s there were many tennis tournaments such as WCT and NLT which competed for man players. At the end of 1972 US Open due to increased rivaly between different tournaments playes agreed to form the Association of Tennis Proessionals (ATP) and agreed to boycott several important tournamets such as Wimbledon.
+In 2020 the impact of coronavirus pandemy made a severe blow to the sport.
+```{r, out.width="100%"}
+ggplotly( ggplot(combined_DF %>% group_by(league, year) %>% summarise(no_matches = length(year), .groups = 'drop'),
        aes(x=year, y=no_matches, group=league)) +
   scale_x_continuous(breaks=seq(1848, 2021, 5)) +
   geom_line(aes(color=league), size=1) + 
@@ -221,11 +222,13 @@ ggplot(combined_DF %>% group_by(league, year) %>% summarise(no_matches = length(
   labs(x="Year", y="Number of matches", title="Number of matches per year") +
   geom_vline(xintercept=2020, linetype="dotted", color="black", size=0.7) +
   geom_text(aes(x=2020, label="CORONAVIRUS", y=3500), angle=90) +
-  theme_classic()
+  theme_classic() )
 ```
 
-Plot the location on the map of the tourneys. Get the latitude and coordonates from tourney name using openstreetmap
-```{r, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
+The location on the world map of the top 50 tourneys.
+We get the latitude and longitude coordonates from tourney name using openstreetmap online API.
+
+```{r, out.width="100%", message=FALSE, warning=FALSE}
 get_coordonates <- function(df) {
   long <- double(nrow(df))
   lat <- double(nrow(df))
@@ -247,13 +250,17 @@ get_coordonates <- function(df) {
   ))
 }
 
-tourney_coordonates_DF <- get_coordonates(combined_DF %>% count(tourney_name) %>% top_n(50)) %>% filter(long!=0 & lat!=0)
+# This takes a long time so we cache them
+#tourney_coordonates_DF <- get_coordonates(combined_DF %>% count(tourney_name) %>% top_n(50)) %>% filter(long!=0 & lat!=0)
+#write(tourney_coordonates_DF, 'data/tourney_coordonates.csv')
+tourney_coordonates_DF <- read.csv('data/tourney_coordonates.csv')
+
 ggplot(map_data("world"), aes(x=long, y=lat)) +
-        geom_polygon(aes(group=group, fill=region ), color="white") +
-        geom_text(data=tourney_coordonates_DF, aes(label=tourney_name), size=3, hjust=0.5) +
-        geom_point(data=tourney_coordonates_DF, color="red", size=2) +
-        scale_fill_viridis_d() +
-        theme_void() + theme(legend.position = "none")
+  geom_polygon(aes(group=group, fill=region), color="white") +
+  geom_text(data=tourney_coordonates_DF, aes(label=tourney_name), size=3, hjust=0.5) +
+  geom_point(data=tourney_coordonates_DF, color="red", size=1) +
+  scale_fill_viridis_d() + ggtitle("Tourney world map") +
+  theme_classic() + theme(legend.position = "none") + coord_quickmap()
 ```
 
 Plot top 10 countries by number of Grand Slams won for ATP and WTA
@@ -303,12 +310,13 @@ ggplot(maps_wta_g_wins,  aes(x = long, y = lat)) +
 ```
 
 Plot the top tourney matches player per year
-```{r, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
+```{r, out.width="100%", message=FALSE, warning=FALSE}
 top_tourney <- combined_DF %>% count(tourney_name) %>% top_n(6)
-ggplot(combined_DF %>% filter(tourney_name %in% top_tourney$tourney_name) %>% group_by(tourney_name) %>% count(year)) + 
-  geom_line(aes(x=year, y=n, color=tourney_name), size=1) +
+ggplotly( ggplot(combined_DF %>% filter(tourney_name %in% top_tourney$tourney_name) %>% group_by(tourney_name) %>% count(year)) + 
+  geom_line(aes(x=year, y=n, color=tourney_name), size=0.5) +
   labs(x="Year", y="Number of matches", color="Tourney", title="Matches per year of top tournaments") +
-  theme_minimal()
+  scale_x_continuous(breaks=seq(1848, 2021, 5)) +
+  scale_color_viridis_d() + theme_classic() )
 ```
 
 
@@ -327,27 +335,31 @@ ggplot(combined_DF %>% filter(!is.na(minutes)) %>% group_by(league, round) %>%
   labs(x="Winner hand", y="Loser hand", title="Box plot for match duration by round")
 ```
 
-#### Player hand statistics
+#### Playing hand statistics
 
-Visualize how many players in both leagues use left, right or both hands for backhand
-```{r, echo=FALSE}
-ggplot(combined_DF %>% filter(!is.na(winner_hand)) %>% group_by(league, winner_id, winner_hand) %>% distinct(winner_id)) +
-  geom_bar(aes(winner_hand, fill = league), position = "dodge") +
-  scale_fill_manual(values=c('blue','red')) +
-  labs(x="Player hand", y="Number of players", title="Bar plot for number of players by hand") +
-  theme_classic()
+Visualize how many players in both leagues use left, right or both hands for playing hand
+```{r}
+ggplotly( ggplot(combined_DF %>% filter(!is.na(winner_hand)) %>%
+                   mutate(winner_hand=recode(winner_hand, L="Left Hand", R="Right hand", U="Both Hands")) %>%
+                   group_by(league, winner_id, winner_hand) %>% distinct(winner_id)) +
+    geom_bar(aes(winner_hand, fill = league), position = "dodge") +
+    scale_fill_manual(values=c('blue','red')) +
+    labs(x="Player hand", y="Number of players", title="Bar plot for number of players by playing hand") +
+    theme_classic() )
 ```
 
-Visualize how many matches are played per league depending on backhand
-```{r, echo=FALSE}
-ggplot(combined_DF %>% filter(!is.na(winner_hand) & !is.na(loser_hand)) %>%
+Visualize how many matches are played per league depending on playing hand
+```{r}
+ggplotly( ggplot(combined_DF %>% filter(!is.na(winner_hand) & !is.na(loser_hand)) %>%
+         mutate(winner_hand=recode(winner_hand, L="Left Hand", R="Right hand", U="Both Hands")) %>%
+         mutate(loser_hand=recode(loser_hand, L="Left Hand", R="Right hand", U="Both Hands")) %>%
          group_by(league, winner_hand, loser_hand) %>% summarise(no_matches = length(winner_hand), .groups = 'drop'),
        aes(winner_hand, loser_hand)) +
   geom_tile(aes(fill=no_matches)) +
   scale_fill_gradient(low = "light gray", high = "blue") +
   labs(x="Winner hand", y="Loser hand", title="Tile plot for number of matches by backhand") +
   theme_classic() +
-  facet_wrap(~league, nrow=1)
+  facet_wrap(~league, nrow=1) )
 ```
 
 #### Serve statistics
@@ -415,14 +427,26 @@ ggplot(players_DF %>% select(league, player_id, birth_date) %>%
 ```
 
 Visualize the distribution of rank difference of players in matches. Notice is gaussian with 0 mean.
-```{r, echo=FALSE}
-ggplot(combined_DF %>% filter(!is.na(winner_rank) & !is.na(loser_rank)) %>% 
-         group_by(league, winner_rank, loser_rank) %>% summarise(rank_difference = winner_rank - loser_rank, .groups = 'drop'),
-       aes(x=rank_difference)) +
-  geom_freqpoly(aes(color=league), bins=100) +
-  scale_color_manual(values=c('blue','red')) +
-  labs(x="Winner rank difference", y="Number of matches", title="Player rank difference of played matches") +
-  theme_classic()
+For better visualization we also zoom in for the ranks difference between -150 and 150
+```{r, out.width="100%"}
+p <- ggplot(combined_DF %>% filter(!is.na(winner_rank) & !is.na(loser_rank)) %>%
+                   group_by(league, winner_rank, loser_rank) %>% summarise(rank_difference = winner_rank - loser_rank, .groups = 'drop'),
+                 aes(x=rank_difference)) +
+            geom_freqpoly(aes(color=league), bins=100) +
+            scale_color_manual(values=c('blue','red')) +
+            labs(x="Winner rank difference", y="Number of matches", title="Matches player rank difference") +
+            theme_classic()
+
+p1 <- ggplot(combined_DF %>% filter(!is.na(winner_rank) & !is.na(loser_rank)) %>%
+                        group_by(league, winner_rank, loser_rank) %>% summarise(rank_difference = winner_rank - loser_rank, .groups = 'drop') %>%
+               filter(rank_difference >= -150 & rank_difference <= 150),
+                      aes(x=rank_difference)) +
+                 geom_freqpoly(aes(color=league), bins=100) +
+                 scale_color_manual(values=c('blue','red')) +
+                 labs(x="Winner rank difference", y="Number of matches", title="Rank difference for [-150, 150]") +
+                 theme_classic()
+
+grid.arrange(p, p1, ncol=2)
 ```
 
 
