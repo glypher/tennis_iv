@@ -15,7 +15,27 @@ knitr::opts_chunk$set(echo=TRUE)
 
 ## ATP Tennis Visualisation
 
-This project is about tennis ATP results
+### Tennis
+
+Like with almost all sports, tennis has its own unique system for player ranking and progression.
+ATP (Association of Tennis Players) league for mens and WTA (Womens Tennis Association) league for women.
+While there are many tournaments in tennis, ATP and WTA tournaments represent the majority of them.
+
+
+### Dataset
+All tennis related data was taken from the [GitHub repository](https://github.com/JeffSackmann/tennis_atp/) maintained by
+*Jeff Sackmann*. He has manually collected over the years (with the help of volunteers) statistics for
+almost all ATP and WTA tournaments. While collecting certain match statistics like who plays who, final score,
+and player ranks can be automated as this information is readily available from multiple sources, the repository
+contains more fine grained statistics like number of faults, aces, serves in the court or won and others which
+were manually collected by painstakingly watching every game.
+
+#### Features
+
+### Project aim
+The aim of our project is two-fold. First, we want to do Exploratory Data Analysis on all of the available data
+to try and find insightful and interesting statistics of any kind. Secondly, we would like to apply what we've
+learned from exploring the data in order to train regression / classification models for different tasks.
 
 ```{r load_packages, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
 load_packages <- function(package_names) {
