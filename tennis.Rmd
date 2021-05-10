@@ -17,7 +17,7 @@ knitr::opts_chunk$set(echo=TRUE)
 
 This project is about tennis ATP results
 
-```{r, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
+```{r load_packages, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
 load_packages <- function(package_names) {
   list.of.packages <- as.vector(package_names)
   new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
@@ -34,7 +34,7 @@ select <- dplyr::select
 
 #### Merging ATP and WTA matches CVS files
 
-```{r, echo=FALSE}
+```{r load_matches, echo=FALSE}
 load_data <- function(directory, regex, column_types, col_names=TRUE) {
   list.files(path = directory, pattern = regex, full.names = T) %>%
     lapply( (function (file) read_csv(file, col_types = column_types, col_names = col_names)) ) %>% dplyr::bind_rows()
@@ -134,7 +134,7 @@ combined_DF <- bind_rows(list(ATP = singles_atp_DF, WTA = singles_wta_DF), .id =
 
 #### Merging ATP and WTA player CSV files
 
-```{r, echo=FALSE}
+```{r load_players, echo=FALSE}
 col_names <- c(
   "player_id", "first_name", "last_name", "hand", "birth_date", "ioc"
 )
@@ -162,7 +162,7 @@ players_DF <- bind_rows(list(ATP = players_atp_DF, WTA = players_wta_DF), .id = 
 
 #### Merging ATP and WTA rankings CSV files
 
-```{r, echo=FALSE}
+```{r load_rankings, echo=FALSE}
 col_names <- c("ranking_date", "rank", "player", "points")
 column_types <- cols(
   ranking_date = "c", # Parsed later (needs to specify format)
@@ -198,7 +198,7 @@ rankings_DF <- bind_rows(list(ATP = rankings_atp_DF, WTA = rankings_wta_DF), .id
 ```
 
 #### Load Country Codes CSV file
-```{r, echo=FALSE}
+```{r load_countries, echo=FALSE}
 column_types <- cols(
   country = "c",
   ioc = "c"
@@ -263,56 +263,41 @@ ggplot(map_data("world"), aes(x=long, y=lat)) +
   theme_classic() + theme(legend.position = "none") + coord_quickmap()
 ```
 
-Plot top 10 countries by number of Grand Slams won for ATP and WTA
-```{r, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
+World Map showing how many tournaments (ATP and WTA) countries have won.
+```{r, out.width="100%", message=FALSE, warning=FALSE}
 
-country_atp_g_wins <- combined_DF %>%
-  filter(league == 'ATP', round == 'F', tourney_level == 'G') %>%
+column_types <- cols(
+  lat = "d",
+  lon = "d",
+  country = "c"
+)
+
+country_coords_DF <- load_data('./data', "country_coords.csv", column_types)
+
+country_wins <- combined_DF %>%
+  filter(round == 'F') %>%
   group_by(league) %>% count(winner_ioc, name = "tourney_wins") %>%
-  slice_max(tourney_wins, n = 10) %>%
+  spread(key = league, value = tourney_wins) %>%
+  mutate(tourney_wins = ATP + WTA) %>%
   left_join(country_DF, by=c("winner_ioc" = "ioc")) %>%
+  left_join(country_coords_DF, by=c("country" = "country")) %>%
   mutate(country=replace(country, winner_ioc == 'USA', 'USA')) %>%
   ungroup()
 
-maps_atp_g_wins <- map_data("world", region = country_atp_g_wins$country) %>%
-  filter(is.na(subregion) | subregion != 'Alaska'& subregion != 'Hawaii') %>%
-  left_join(country_atp_g_wins %>% select(country, tourney_wins), by = c("region" = "country")) %>%
-  mutate(region = fct_reorder(region, tourney_wins, .desc = TRUE))
+plot <- ggplot(country_wins) +
+  geom_polygon(data = map_data("world"), aes(x = long, y = lat, group = group), color = "white", fill = "grey", size = 0.1) +
+  geom_point(aes(x = lon, y = lat, size = tourney_wins, color = tourney_wins, label_country = country, label_combined = tourney_wins, label_atp = ATP, label_wta = WTA)) +
+  scale_color_viridis(trans="log") +
+  theme_void()
 
-ggplot(maps_atp_g_wins,  aes(x = long, y = lat)) +
-  geom_map(map = maps_atp_g_wins, aes(map_id = region, fill=region)) +
-  facet_wrap(~region + tourney_wins, scale="free", labeller = label_wrap_gen(multi_line = FALSE)) +
-  theme_void() +
-  labs(title="Top 10 countries by number of ATP Grand Slams won")
-```
-
-```{r, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
-
-country_wta_g_wins <- combined_DF %>%
-  filter(league == 'WTA', round == 'F', tourney_level == 'G') %>%
-  group_by(league) %>% count(winner_ioc, name = "tourney_wins") %>%
-  slice_max(tourney_wins, n = 10) %>%
-  left_join(country_DF, by=c("winner_ioc" = "ioc")) %>%
-  mutate(country=replace(country, winner_ioc == 'USA', 'USA')) %>%
-  mutate(country=replace(country, winner_ioc == 'GBR', 'UK')) %>%
-  ungroup()
-
-maps_wta_g_wins <- map_data("world", region = country_wta_g_wins$country) %>%
-  filter(is.na(subregion) | subregion != 'Alaska'& subregion != 'Hawaii') %>%
-  left_join(country_wta_g_wins %>% select(country, tourney_wins), by = c("region" = "country")) %>%
-  mutate(region = fct_reorder(region, tourney_wins, .desc = TRUE))
-
-ggplot(maps_wta_g_wins,  aes(x = long, y = lat)) +
-  geom_map(map = maps_wta_g_wins, aes(map_id = region, fill=region)) +
-  facet_wrap(~region + tourney_wins, scale="free", labeller = label_wrap_gen(multi_line = FALSE)) +
-  theme_void() +
-  labs(title="Top 10 countries by number of WTA Grand Slams won")
+plot
+# ggplotly(plot, tooltip = c('label_country', 'label_combined', 'label_atp', 'label_wta'))
 ```
 
 Plot the top tourney matches player per year
 ```{r, out.width="100%", message=FALSE, warning=FALSE}
 top_tourney <- combined_DF %>% count(tourney_name) %>% top_n(6)
-ggplotly( ggplot(combined_DF %>% filter(tourney_name %in% top_tourney$tourney_name) %>% group_by(tourney_name) %>% count(year)) + 
+ggplotly( ggplot(combined_DF %>% filter(tourney_name %in% top_tourney$tourney_name) %>% group_by(tourney_name) %>% count(year)) +
   geom_line(aes(x=year, y=n, color=tourney_name), size=0.5) +
   labs(x="Year", y="Number of matches", color="Tourney", title="Matches per year of top tournaments") +
   scale_x_continuous(breaks=seq(1848, 2021, 5)) +
@@ -321,8 +306,9 @@ ggplotly( ggplot(combined_DF %>% filter(tourney_name %in% top_tourney$tourney_na
 
 
 #### Round statistics
-Visualize the average match length by round type
-```{r, echo=FALSE}
+
+Average match length by round type.
+```{r, out.width="100%", message=FALSE, warning=FALSE}
 
 # Get lower and upper whiskers
 ylim <- boxplot.stats((combined_DF %>% filter(!is.na(minutes)))$minutes)$stats[c(1, 5)]
@@ -338,7 +324,7 @@ ggplot(combined_DF %>% filter(!is.na(minutes)) %>% group_by(league, round) %>%
 #### Playing hand statistics
 
 Visualize how many players in both leagues use left, right or both hands for playing hand
-```{r}
+```{r, out.width="100%", message=FALSE, warning=FALSE}
 ggplotly( ggplot(combined_DF %>% filter(!is.na(winner_hand)) %>%
                    mutate(winner_hand=recode(winner_hand, L="Left Hand", R="Right hand", U="Both Hands")) %>%
                    group_by(league, winner_id, winner_hand) %>% distinct(winner_id)) +
@@ -349,7 +335,7 @@ ggplotly( ggplot(combined_DF %>% filter(!is.na(winner_hand)) %>%
 ```
 
 Visualize how many matches are played per league depending on playing hand
-```{r}
+```{r, out.width="100%", message=FALSE, warning=FALSE}
 ggplotly( ggplot(combined_DF %>% filter(!is.na(winner_hand) & !is.na(loser_hand)) %>%
          mutate(winner_hand=recode(winner_hand, L="Left Hand", R="Right hand", U="Both Hands")) %>%
          mutate(loser_hand=recode(loser_hand, L="Left Hand", R="Right hand", U="Both Hands")) %>%
@@ -365,7 +351,7 @@ ggplotly( ggplot(combined_DF %>% filter(!is.na(winner_hand) & !is.na(loser_hand)
 #### Serve statistics
 
 Correlation between serves and breaks with match wins
-```{r, echo=FALSE}
+```{r, out.width="100%", message=FALSE, warning=FALSE}
 serves_correlation <- cor(
   combined_DF %>%
     select(w_1stIn, w_1stWon, w_2ndWon, w_breaks) %>%
@@ -377,21 +363,21 @@ serves_correlation <- cor(
                 rename(fstIn = l_1stIn, fstWon = l_1stWon, sndWon = l_2ndWon, breaks = l_breaks) %>% mutate(win = 0))
 )
 
-ggplot(data = melt(serves_correlation), aes(x = Var1, y = Var2, fill = value)) + 
+ggplotly(ggplot(data = melt(serves_correlation), aes(x = Var1, y = Var2, fill = value)) + 
   geom_tile() +
   scale_fill_viridis_c() +
-  labs(x="Variable 1", y="Variable 2", title="Correlation Matrix for serves and breaks")
+  labs(x="Variable 1", y="Variable 2", title="Correlation Matrix for serves and breaks"))
 ```
 
-Visualize the percentage of serves won if 1st serve is inside the court (How strong players 1st serve is)
-```{r, echo=FALSE}
-ggplot(combined_DF %>% select(league, w_1stPercWon) %>% rename(perc_won = w_1stPercWon) %>%
+Visualize the percentage of serves won if 1st serve is inside the court (how strong players 1st serve is)
+```{r, out.width="100%", message=FALSE, warning=FALSE}
+ggplotly(ggplot(combined_DF %>% select(league, w_1stPercWon) %>% rename(perc_won = w_1stPercWon) %>%
          bind_rows(combined_DF %>% select(league, l_1stPercWon) %>% rename(perc_won = l_1stPercWon)) %>%
          filter(!is.na(perc_won)),
        aes(perc_won, group=league, fill=league)) +
   geom_density() +
   facet_wrap(~league) +
-  labs(x="Percentage won", y="Density", title="Percentage of 1st serves won (if serve is in)")
+  labs(x="Percentage won", y="Density", title="Percentage of 1st serves won (if serve is in)"))
 ```
 
 #### Rank difference
@@ -447,14 +433,6 @@ p1 <- ggplot(combined_DF %>% filter(!is.na(winner_rank) & !is.na(loser_rank)) %>
                  theme_classic()
 
 grid.arrange(p, p1, ncol=2)
-```
-
-
-```{r, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
-x <- ggplot(combined_DF %>% filter(!is.na(winner_ht))) +
-  geom_histogram(aes(x=winner_ht, fill=league), alpha = .65, position = 'identity') +
-  scale_x_continuous(breaks=seq(120, 240, 5))
-ggplotly(x)
 ```
 
 
@@ -928,82 +906,109 @@ ui <- dashboardPage(
     )
   )
 
+# Precompute plots
+plot_confusion <- function(model, observations) {
+  predictions <- predict(model, newdata = observations)
+  confusion <- confusionMatrix(predictions, observations$target)
+  confusion_values <- as.data.frame(confusion$table)
+
+  return (ggplot(data = confusion_values, mapping = aes(x = Prediction, y = Reference)) +
+    geom_tile(aes(fill = Freq), colour = "white") +
+    geom_text(aes(label = sprintf("%1.0f", Freq)), vjust = 1, color = "white", size=12) +
+    scale_fill_viridis_c())
+}
+
+plot_shapley <- function(model, train, test) {
+  features <- train %>% select(-target) %>% as.data.frame()
+  predictor <- Predictor$new(model, data = features, y = train$target)
+  shapley <- Shapley$new(predictor, x.interest = test[1:15, -11])
+
+  shapley$results %>% filter(class == 1) %>%
+    ggplot(aes(x = feature, y = phi)) +
+    geom_bar(stat = "identity") +
+    coord_flip()
+}
+
+plot_performance_knn <- function(model) {
+  data <- melt(model$results %>% select(k, Accuracy, Kappa), id="k")
+  ggplot(data = data) +
+    geom_line(aes(x = k, y = value, color = variable)) +
+    geom_point(aes(x = k, y = value, fill = variable), shape=21, size=6, show.legend = FALSE) +
+    labs(x = "Neighbours", y = "Score", colour = "Metric")
+}
+
+plot_performance_rf <- function(model) {
+  data <- melt(model$results %>% select(mtry, Accuracy, Kappa), id="mtry")
+  ggplot(data = data) +
+    geom_line(aes(x = mtry, y = value, color = variable)) +
+    geom_point(aes(x = mtry, y = value, fill = variable), shape=21, size=6, show.legend = FALSE) +
+    labs(x = "# Variables per split", y = "Score", colour = "Metric")
+}
+
+plot_performance_svm <- function(model) {
+  data <- melt(model$results %>% select(C, Accuracy, Kappa), id="C")
+  ggplot(data = data) +
+    geom_line(aes(x = C, y = value, color = variable)) +
+    geom_point(aes(x = C, y = value, fill = variable), shape=21, size=6, show.legend = FALSE) +
+    labs(x = "C", y = "Score", colour = "Metric")
+}
+
+plot_performance_xgb <- function(model) {
+  data <- melt(model$results %>% select(max_depth, gamma, eta, Accuracy, Kappa), id= c("max_depth", "gamma", "eta"))
+  ggplot(data = data) +
+    geom_line(aes(x = max_depth, y = value, color = variable)) +
+    geom_point(aes(x = max_depth, y = value, fill = variable), shape=21, size=6, show.legend = FALSE) +
+    facet_wrap(~gamma + eta, labeller = labeller(gamma = label_both, eta = label_both)) +
+    labs(x = "C", y = "Score", colour = "Metric")
+}
+  
+precomputed_plots <- list(
+  knn = list(
+    confusion =  plot_confusion(knn_model, observations_test),
+    shapley = plot_shapley(knn_model, observations_train, observations_test),
+    perf = plot_performance_knn(knn_model)
+  ),
+  rf = list(
+    confusion = plot_confusion(rf_model, observations_test),
+    shapley = plot_shapley(rf_model, observations_train, observations_test),
+    perf = plot_performance_rf(rf_model)
+  ),
+  svm = list(
+    confusion = plot_confusion(svm_model, observations_test),
+    shapley = plot_shapley(svm_model, observations_train, observations_test),
+    perf = plot_performance_svm(svm_model)
+  ),
+  lgreg = list(
+    confusion = plot_confusion(lgreg_model, observations_test),
+    shapley = plot_shapley(lgreg_model, observations_train, observations_test)
+  ),
+  xgb = list(
+    confusion = plot_confusion(xgb_model, observations_test),
+    shapley = plot_shapley(xgb_model, observations_train, observations_test),
+    perf = plot_performance_xgb(xgb_model)
+  )
+)
+
+
 server <- function(input, output) {
+  output$knn_confusion <- renderPlot({precomputed_plots$knn$confusion})
+  output$knn_shapley <- renderPlot({precomputed_plots$knn$shapley})
+  output$knn_perf <- renderPlot({precomputed_plots$knn$perf})
   
-  plot_confusion <- function(model, observations) {
-    predictions <- predict(model, newdata = observations)
-    confusion <- confusionMatrix(predictions, observations$target)
-    confusion_values <- as.data.frame(confusion$table)
-    
-    ggplot(data = confusion_values, mapping = aes(x = Prediction, y = Reference)) +
-      geom_tile(aes(fill = Freq), colour = "white") +
-      geom_text(aes(label = sprintf("%1.0f", Freq)), vjust = 1, color = "white", size=12) +
-      scale_fill_viridis_c()
-  }
+  output$rf_confusion <- renderPlot({precomputed_plots$rf$confusion})
+  output$rf_shapley <- renderPlot({precomputed_plots$rf$shapley})
+  output$rf_perf <- renderPlot({precomputed_plots$rf$perf})
 
-  plot_shapley <- function(model, train, test) {
-    features <- train %>% select(-target) %>% as.data.frame()
-    predictor <- Predictor$new(model, data = features, y = train$target)
-    shapley <- Shapley$new(predictor, x.interest = test[1:15, -11])
-    
-    shapley$results %>% filter(class == 1) %>%
-      ggplot(aes(x = feature, y = phi)) +
-      geom_bar(stat = "identity") +
-      coord_flip()
-  }
-  
-  plot_performance_knn <- function(model) {
-    data <- melt(model$results %>% select(k, Accuracy, Kappa), id="k")
-    ggplot(data = data) +
-      geom_line(aes(x = k, y = value, color = variable)) +
-      geom_point(aes(x = k, y = value, fill = variable), shape=21, size=6, show.legend = FALSE) +
-      labs(x = "Neighbours", y = "Score", colour = "Metric")
-  }
-  
-  plot_performance_rf <- function(model) {
-    data <- melt(model$results %>% select(mtry, Accuracy, Kappa), id="mtry")
-    ggplot(data = data) +
-      geom_line(aes(x = mtry, y = value, color = variable)) +
-      geom_point(aes(x = mtry, y = value, fill = variable), shape=21, size=6, show.legend = FALSE) +
-      labs(x = "# Variables per split", y = "Score", colour = "Metric")
-  }
-  
-  plot_performance_svm <- function(model) {
-    data <- melt(model$results %>% select(C, Accuracy, Kappa), id="C")
-    ggplot(data = data) +
-      geom_line(aes(x = C, y = value, color = variable)) +
-      geom_point(aes(x = C, y = value, fill = variable), shape=21, size=6, show.legend = FALSE) +
-      labs(x = "C", y = "Score", colour = "Metric")
-  }
-  
-  plot_performance_xgb <- function(model) {
-    data <- melt(model$results %>% select(max_depth, gamma, eta, Accuracy, Kappa), id= c("max_depth", "gamma", "eta"))
-    ggplot(data = data) +
-      geom_line(aes(x = max_depth, y = value, color = variable)) +
-      geom_point(aes(x = max_depth, y = value, fill = variable), shape=21, size=6, show.legend = FALSE) +
-      facet_wrap(~gamma + eta, labeller = labeller(gamma = label_both, eta = label_both)) +
-      labs(x = "C", y = "Score", colour = "Metric")
-  }
-  
-  output$knn_confusion <- renderPlot({plot_confusion(knn_model, observations_test)})
-  output$knn_shapley <- renderPlot({plot_shapley(knn_model, observations_train, observations_test)})
-  output$knn_perf <- renderPlot({plot_performance_knn(knn_model)})
-  
-  output$rf_confusion <- renderPlot({plot_confusion(rf_model, observations_test)})
-  output$rf_shapley <- renderPlot({plot_shapley(rf_model, observations_train, observations_test)})
-  output$rf_perf <- renderPlot({plot_performance_rf(rf_model)})
+  output$svm_confusion <- renderPlot({precomputed_plots$svm$confusion})
+  output$svm_shapley <- renderPlot({precomputed_plots$svm$shapley})
+  output$svm_perf <- renderPlot({precomputed_plots$svm$perf})
 
-  output$svm_confusion <- renderPlot({plot_confusion(svm_model, observations_test)})
-  output$svm_shapley <- renderPlot({plot_shapley(svm_model, observations_train, observations_test)})
-  output$svm_perf <- renderPlot({plot_performance_svm(svm_model)})
+  output$lgreg_confusion <- renderPlot({precomputed_plots$lgreg$confusion})
+  output$lgreg_shapley <- renderPlot({precomputed_plots$rf$shapley})
 
-  output$lgreg_confusion <- renderPlot({plot_confusion(lgreg_model, observations_test)})
-  output$lgreg_shapley <- renderPlot({plot_shapley(lgreg_model, observations_train, observations_test)})
-  # output$lgreg_perf <- renderPlot({plot_performance_knn(lgreg_model)})
-
-  output$xgb_confusion <- renderPlot({plot_confusion(xgb_model, observations_test)})
-  output$xgb_shapley <- renderPlot({plot_shapley(xgb_model, observations_train, observations_test)})
-  output$xgb_perf <- renderPlot({plot_performance_xgb(xgb_model)})
+  output$xgb_confusion <- renderPlot({precomputed_plots$xgb$confusion})
+  output$xgb_shapley <- renderPlot({precomputed_plots$xgb$shapley})
+  output$xgb_perf <- renderPlot({precomputed_plots$xgb$perf})
 }
 
 shinyApp(ui, server, options=list(height=1200))
@@ -1013,29 +1018,22 @@ shinyApp(ui, server, options=list(height=1200))
 ```{r, echo=FALSE}
 
 class_ui <- dashboardPage(
-  dashboardHeader(title = "Classification"),
+  dashboardHeader(title = "Interactive Predictions"),
   dashboardSidebar(
-    div("Model"),
-    sidebarMenu(
-      menuItem("Grand Slam Predictions", tabName = "gsp", icon = icon("th"))
-    )
+    collapsed = TRUE
   ),
 
   dashboardBody(
-    tabItems(
-      tabItem(tabName = "gsp",
-              fluidRow(
-                h3("Grand Slam Predictions"),
-                pickerInput(inputId="in_league", label="Select League", choices=c('WTA', 'ATP')),
-                pickerInput(inputId="in_tourney_name", label="Select Tourney", choices=c()),
-                pickerInput(inputId="in_tourney_round", label="Select Round", choices=c()),
-                pickerInput(inputId="in_tourney_match", label="Select Match", choices=c('000 - '))
-              ),
-              fluidRow(
-                h3("Odds"),
-                box(width=600, height = 400, plotOutput("odds_plot", width=600, height = 400))
-              )
-      )
+    fluidRow(
+      h3("Predicting ATP and WTA 2019 Grand Slam matches"),
+      pickerInput(inputId="in_league", label="Select League", choices=c('WTA', 'ATP')),
+      pickerInput(inputId="in_tourney_name", label="Select Tourney", choices=c()),
+      pickerInput(inputId="in_tourney_round", label="Select Round", choices=c()),
+      pickerInput(inputId="in_tourney_match", label="Select Match", choices=c('000 - '))
+    ),
+    fluidRow(
+      h3("Winnig Odds"),
+      box(width=600, height = 400, plotOutput("odds_plot", width=600, height = 400))
     )
   )
 )
@@ -1087,7 +1085,9 @@ class_server <- function(input, output, session) {
       odds_df <- tibble(name=c(l_name, w_name), probs = unlist(logr_predict))
 
       output$odds_plot <- renderPlot({
-        odds_df %>% ggplot(aes(name, probs)) + geom_bar(stat="identity")
+        odds_df %>% ggplot(aes(name, probs)) +
+          geom_bar(stat="identity", aes(fill = ifelse(probs >= 0.5, 'red', 'green'))) +
+          theme(legend.position = "none")
       })
     }
   })
