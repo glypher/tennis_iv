@@ -481,9 +481,9 @@ grid.arrange(p, p1, ncol=2)
 
 ### Player rank evolution
 
-Interactive page with ranking evolution of players
+Interactive page with ranking evolution of players and other statistics
 
-```{r}
+```{r, message=FALSE, warning=FALSE}
 ui <- fluidPage(
   titlePanel("Player Statistics"),
 
@@ -507,12 +507,14 @@ ui <- fluidPage(
         label = "Players:",
         choices = c("Initializing...")
       ),
+      tableOutput("playerTable")
     ),
 
     # Show a plot of the generated distribution
     mainPanel(
       plotOutput("rankPlot"),
-      tableOutput("playerTable")
+      plotOutput("winsPlot", height=300),
+      plotOutput("acePlot", height=300),
     )
   )
 )
@@ -524,14 +526,14 @@ server <- function(input, output, session) {
       session=session,
       inputId = "players",
       choices=league_players$full_name
-      )
+    )
   })
 
   uiRankPlayers <- reactive({
     max_ranking <- rankings_DF %>% rename(player_id=player) %>% group_by(player_id) %>% summarize(max_ranking=min(rank))
 
     max_rank <- players_DF %>% mutate(birth_date=as.Date(birth_date), full_name=paste0(last_name, " ", first_name)) %>%
-      filter(birth_date > as.Date('1990-01-01')) %>%
+      filter(birth_date > as.Date('1980-01-01')) %>%
       inner_join(max_ranking, by=c("player_id")) %>% filter(max_ranking < input$max_rank)
 
     return (max_rank)
@@ -549,23 +551,52 @@ server <- function(input, output, session) {
              aes(x=ranking_date, y=rank, group=full_name)) +
         geom_line(aes(color=full_name), size=1) +
         labs(x="Date", y="Rank", title="Evolution of rank of players") +
-        theme_classic()
+        scale_colour_viridis_d() + theme_classic()
+    })
+
+    players_DF <- uiPlayers() %>% select(player_id, full_name) %>% distinct()
+    aces_DF <- combined_DF %>% select(winner_id, year, w_ace) %>%
+      rename(player_id=winner_id) %>% inner_join(players_DF, by=c("player_id")) %>%
+      na.omit() %>%
+      group_by(full_name, year) %>% summarise(full_name=full_name, year=year, aces=mean(w_ace))
+
+    output$acePlot <- renderPlot({
+      ggplot(aces_DF,
+             aes(x=year, y=aces, group=full_name)) +
+        geom_line(aes(color=full_name), size=1) +
+        labs(x="Date", y="Average aces per match", title="Evolution of 1st ace of players") +
+        scale_colour_viridis_d() + theme_classic()
+    })
+
+    game_DF <- combined_DF %>% select(winner_id, w_1stWon, w_2ndWon, w_breaks) %>%
+      rename(player_id=winner_id) %>% inner_join(players_DF, by=c("player_id")) %>%
+      na.omit() %>% rename(FirstServeWon=w_1stWon, SecondServeWon=w_2ndWon, Breaks=w_breaks) %>%
+      gather(key="Statistic", value="n", 2,3,4) %>% group_by(full_name)
+
+    output$winsPlot <- renderPlot({
+      ggplot(game_DF,
+             aes(x=Statistic, y=n, fill=full_name)) +
+        geom_boxplot() + coord_flip() +
+        labs(title="Evolution of game wons and break") +
+        scale_colour_viridis_d() + theme_classic()
     })
 
     player_stats <- uiPlayers() %>% distinct(full_name, birth_date, ioc, hand) %>%
       mutate(birth_date=format(birth_date, "%Y-%m-%d")) %>%
+      mutate(hand=recode(hand, L="Left", R="Right", U="Both")) %>%
       rename(Name=full_name, Birthdate=birth_date, Country=ioc, Hand=hand)
-    output$playerTable <- renderTable(player_stats %>% select(Name, Country, Birthdate, Hand))
+    output$playerTable <- renderTable(player_stats %>% select(Name, Country, Birthdate, Hand),
+                                      spacing="xs", striped=TRUE)
   })
 
 }
 
-shinyApp(ui, server, options=list(height=600))
+shinyApp(ui, server, options=list(height=800))
 ```
 
 ### Regression models for predicting players rank difference
 
-Dashboard for different gression models applied to a 90-10% train-test split on matches that took place after 2000.
+Dashboard for different gression models applied to a 90-10% train-test split on matches that took place after 2005.
 
 ```{r, warning=FALSE, message=FALSE}
 split_data <- function(data, test) {
@@ -578,7 +609,7 @@ split_data <- function(data, test) {
 }
 
 # Setting up features and target
-data_set <- combined_DF %>% filter(year > 2000) %>%
+data_set <- combined_DF %>% filter(year > 2005) %>%
   filter(!is.na(winner_rank) & !is.na(loser_rank)) %>%
   mutate(rank_diff=winner_rank-loser_rank) %>%
   select(c(rank_diff, winner_age, loser_age, winner_rank_points, loser_rank_points,
