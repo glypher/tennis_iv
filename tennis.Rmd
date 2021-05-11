@@ -18,7 +18,7 @@ knitr::opts_chunk$set(echo=TRUE)
 ### Tennis
 
 Like with almost all sports, tennis has its own unique system for player ranking and progression.
-ATP (Association of Tennis Players) league for mens and WTA (Womens Tennis Association) league for women.
+ATP (Association of Tennis Players) league for men and WTA (Women's Tennis Association) league for women.
 While there are many tournaments in tennis, ATP and WTA tournaments represent the majority of them.
 
 
@@ -283,35 +283,41 @@ ggplot(map_data("world"), aes(x=long, y=lat)) +
   theme_classic() + theme(legend.position = "none") + coord_quickmap()
 ```
 
-World Map showing how many tournaments (ATP and WTA) countries have won.
+World Map showing how many tournaments (ATP and WTA) individual countries have won.
 ```{r, out.width="100%", message=FALSE, warning=FALSE}
 
-column_types <- cols(
-  lat = "d",
-  lon = "d",
-  country = "c"
-)
+wins_per_country_plot <- function() {
+  column_types <- cols(
+    lat = "d",
+    lon = "d",
+    country = "c"
+  )
+  
+  country_coords_DF <- load_data('./data', "country_coords.csv", column_types)
+  
+  country_wins <- combined_DF %>%
+    filter(round == 'F') %>%
+    group_by(league) %>% count(winner_ioc, name = "tourney_wins") %>%
+    spread(key = league, value = tourney_wins) %>%
+    mutate(tourney_wins = ATP + WTA) %>%
+    left_join(country_DF, by=c("winner_ioc" = "ioc")) %>%
+    left_join(country_coords_DF, by=c("country" = "country")) %>%
+    mutate(country=replace(country, winner_ioc == 'USA', 'USA')) %>%
+    ungroup()
+  
+  static_plot <- ggplot(country_wins) +
+    geom_polygon(data = map_data("world"), aes(x = long, y = lat, group = group), color = "white", fill = "grey", size = 0.1) +
+    geom_point(aes(x = lon, y = lat, size = tourney_wins, color = tourney_wins, label_country = country, label_combined = tourney_wins, label_atp = ATP, label_wta = WTA)) +
+    scale_color_viridis(trans="log") +
+    theme_void() +
+    coord_quickmap()
+  
+  return (
+    ggplotly(static_plot, tooltip = c('label_country', 'label_combined', 'label_atp', 'label_wta'))
+    )
+}
 
-country_coords_DF <- load_data('./data', "country_coords.csv", column_types)
-
-country_wins <- combined_DF %>%
-  filter(round == 'F') %>%
-  group_by(league) %>% count(winner_ioc, name = "tourney_wins") %>%
-  spread(key = league, value = tourney_wins) %>%
-  mutate(tourney_wins = ATP + WTA) %>%
-  left_join(country_DF, by=c("winner_ioc" = "ioc")) %>%
-  left_join(country_coords_DF, by=c("country" = "country")) %>%
-  mutate(country=replace(country, winner_ioc == 'USA', 'USA')) %>%
-  ungroup()
-
-plot <- ggplot(country_wins) +
-  geom_polygon(data = map_data("world"), aes(x = long, y = lat, group = group), color = "white", fill = "grey", size = 0.1) +
-  geom_point(aes(x = lon, y = lat, size = tourney_wins, color = tourney_wins, label_country = country, label_combined = tourney_wins, label_atp = ATP, label_wta = WTA)) +
-  scale_color_viridis(trans="log") +
-  theme_void()
-
-plot
-# ggplotly(plot, tooltip = c('label_country', 'label_combined', 'label_atp', 'label_wta'))
+renderPlotly({wins_per_country_plot()})
 ```
 
 Plot the top tourney matches player per year
@@ -337,8 +343,10 @@ ggplot(combined_DF %>% filter(!is.na(minutes)) %>% group_by(league, round) %>%
          filter(round != "BR", round != "ER", round != "Q4"),
        aes(round, minutes)) +
   geom_boxplot(aes(fill=league), outlier.shape = NA) +
+  scale_fill_manual(values=c('#3366ff','red')) +
   coord_cartesian(ylim = ylim * 1.5) +
-  labs(x="Winner hand", y="Loser hand", title="Box plot for match duration by round")
+  labs(x="Winner hand", y="Loser hand", title="Box plot for match duration by round") +
+  theme_classic()
 ```
 
 #### Playing hand statistics
@@ -395,6 +403,8 @@ ggplotly(ggplot(combined_DF %>% select(league, w_1stPercWon) %>% rename(perc_won
          bind_rows(combined_DF %>% select(league, l_1stPercWon) %>% rename(perc_won = l_1stPercWon)) %>%
          filter(!is.na(perc_won)),
        aes(perc_won, group=league, fill=league)) +
+  scale_fill_manual(values=c('#3366ff','red')) +
+  theme_classic() +
   geom_density() +
   facet_wrap(~league) +
   labs(x="Percentage won", y="Density", title="Percentage of 1st serves won (if serve is in)"))
@@ -403,18 +413,31 @@ ggplotly(ggplot(combined_DF %>% select(league, w_1stPercWon) %>% rename(perc_won
 #### Rank difference
 
 Visualize the average rank by player age
-```{r, echo=FALSE}
+```{r}
 
-ggplot(players_DF %>% select(league, player_id, birth_date) %>%
-         inner_join(rankings_DF %>% select(league, player, ranking_date, rank), by = (c("league" = "league", "player_id" = "player"))) %>%
-         mutate(age = floor(time_length(difftime(ranking_date, birth_date), "years"))) %>%
-         filter(age > 10, age < 60) %>%
-         group_by(league, age) %>% summarise(avg_rank = mean(rank)),
-       aes(age, avg_rank)) +
-  geom_line(aes(color=league)) +
-  scale_x_continuous(breaks=seq(10, 60, 5)) +
-  scale_y_reverse() +
-  labs(x="Player Age", y="Average rank", title="Average Rank by Age")
+age_by_rank_plot <- function() {
+  df <- players_DF %>% select(league, player_id, birth_date) %>%
+    inner_join(rankings_DF, by = c("league" = "league", "player_id" = "player")) %>%
+    mutate(age = floor(time_length(difftime(ranking_date, birth_date), "years"))) %>%
+    mutate(year = year(ranking_date)) %>%
+    filter(age > 10, age < 60, year > 1984) %>%
+    group_by(year, league, rank) %>%
+    summarise(avg_age = mean(age)) %>%
+    ungroup()
+    
+  static_plot <- ggplot(df, aes(rank, avg_age, frame = year)) +
+    geom_line(aes(color=league)) +
+    labs(x="Rank", y="Average age", title="Average Rank by Age")
+  
+  return (
+    ggplotly(static_plot) %>%
+      animation_opts(1000, easing = "elastic", redraw = FALSE) %>%
+    animation_button(x = 1, xanchor = "right", y = 0, yanchor = "bottom")
+    )
+}
+
+renderPlotly({age_by_rank_plot()})
+
 ```
 
 Visualize the average rank by player age (only looking at top 20)
@@ -549,10 +572,10 @@ Dashboard for linear models
 split_data <- function(data, test) {
   spec = c(train = 1 - test, test = test)
   N = nrow(data)
-  
+
   set.seed(Sys.time())
   data_split = sample(cut( seq(N), N * cumsum(c(0, spec)), labels = names(spec) ))
-  
+
   return(split(data, data_split))
 }
 
@@ -637,7 +660,7 @@ mean_squared_error <- function(true, predicted) {
 }
 
 server <- function(input, output) {
-  
+
   plot_residuals <- function(model, name, data) {
     y_hat <- tryCatch(
       {predict(model, data %>% select(-c(winner_rank)))},
@@ -684,17 +707,17 @@ server <- function(input, output) {
   output$lm_sha <- renderPlot({plot_shapr(r_models$lm, data_set)})
   output$lm_p <- renderPrint({print_performance(r_models$lm, data_set)})
   output$lm_s <- renderPrint({summary(r_models$lm)})
-  
+
   output$aic_res <- renderPlot({plot_residuals(r_models$aic, "AIC Linear Model", data_set$train)})
   output$aic_sha <- renderPlot({plot_shapr(r_models$aic, data_set)})
   output$aic_p <- renderPrint({print_performance(r_models$aic, data_set)})
   output$aic_s <- renderPrint({summary(r_models$aic)})
-  
+
   output$bic_res <- renderPlot({plot_residuals(r_models$bic, "BIC Linear Model", data_set$train)})
   output$bic_sha <- renderPlot({plot_shapr(r_models$bic, data_set)})
   output$bic_p <- renderPrint({print_performance(r_models$bic, data_set)})
   output$bic_s <- renderPrint({summary(r_models$bic)})
-  
+
   output$glm_res <- renderPlot({plot_residuals(r_models$glm, "General Linear Model", data_set$train)})
   output$glm_sha <- renderPlot({plot_shapr(r_models$glm, data_set)})
   output$glm_p <- renderPrint({print_performance(r_models$glm, data_set)})
@@ -740,7 +763,7 @@ get_player_stats <- function(end_date, period) {
   avg_ht_wta <- average_stat('ht', 'WTA')
 
   recent_matches_DF <- combined_DF %>% filter(tourney_date >= end_date - years(period), tourney_date < end_date)
-  
+
   # Transform matches data frame - separate winner and loser stats on different rows
   recent_matches_t_DF <- recent_matches_DF %>%
     rename(player_id=winner_id, bpFaced=w_bpFaced, bpSaved=w_bpSaved, breaks=w_breaks,
@@ -750,7 +773,7 @@ get_player_stats <- function(end_date, period) {
                 rename(player_id=loser_id, bpFaced=l_bpFaced, bpSaved=l_bpSaved, breaks=l_breaks,
                        aces = l_ace, p1stWon = l_1stWon,  p1stIn = l_1stIn, df = l_df, age = loser_age,
                        ht = loser_ht))
-  
+
   # Create a players statistics data frame
   players_stats_DF <- recent_matches_t_DF %>% group_by(league, player_id) %>%
     replace_na(list(breaks=0, matches=0, aces=0, p1stWon = 0, p1stIn = 0, df = 0)) %>%
@@ -760,7 +783,7 @@ get_player_stats <- function(end_date, period) {
               ht = max_or_default(ht, if(league[1] == 'ATP') avg_ht_atp else avg_ht_wta)) %>%
     ungroup() %>%
     replace_na(list(p1stWonP=0))
-  
+
   return (players_stats_DF)
 }
 
@@ -774,11 +797,11 @@ get_observations <- function(matches, player_stats_period) {
     replace_na(list(winner_rank=0, loser_rank=0, winner_rank_points=0, loser_rank_points=0, surface='Hard',
                     age.w=0, age.l=0, ht.w=0, ht.l=0, matches.w=0, matches.l=0, breaksP.w=0, breaksP.l=0,
                     acesP.w=0, acesP.l=0, dfP.w=0, dfP.l=0, p1stWonP.w=0, p1stWonP.l=0))
-  
+
   n_rows <- observations %>% nrow()
   observations_pos <- observations %>% sample_n((n_rows + 1)/ 2, replace=FALSE)
   observations_neg <- anti_join(observations, observations_pos)
-  
+
   observations_pos <- observations_pos %>% mutate(rank_d = winner_rank - loser_rank,
                        points_d = winner_rank_points - loser_rank_points,
                        age_d = age.w- age.l,
@@ -790,7 +813,7 @@ get_observations <- function(matches, player_stats_period) {
                        p1stWonP_d = p1stWonP.w - p1stWonP.l,
                        target = 1) %>%
     select(league, age_d, ht_d, rank_d, points_d, matches_d, breaksP_d, acesP_d, dfP_d, p1stWonP_d, target)
-  
+
   observations_neg <- observations_neg %>% mutate(rank_d = loser_rank - winner_rank,
                        points_d = loser_rank_points - winner_rank_points,
                        age_d = age.l- age.w,
@@ -836,7 +859,7 @@ trControl <- trainControl(
 
 
 # KNN
-grid <- expand.grid(k = c(3, 5, 7, 9, 11, 13)) 
+grid <- expand.grid(k = c(3, 5, 7, 9, 11, 13))
 knn_model <- train(target ~ .,
                    data =  observations_train %>% bind_rows(observations_valid),
                    method = "knn",
@@ -847,8 +870,8 @@ knn_model <- train(target ~ .,
 # Random Forest
 grid <- expand.grid(.mtry = (1:(ncol(observations_train) - 1)))
 rf_model <- train(target ~ .,
-                 data = observations_train %>% bind_rows(observations_valid), 
-                 method = 'rf', 
+                 data = observations_train %>% bind_rows(observations_valid),
+                 method = 'rf',
                  trControl = trControl,
                  tuneGrid = grid,
                  ntree = 15)
@@ -856,7 +879,7 @@ rf_model <- train(target ~ .,
 
 # Logistic Regression
 lgreg_model <- train(target ~ .,
-                 data = observations_train %>% bind_rows(observations_valid), 
+                 data = observations_train %>% bind_rows(observations_valid),
                  method = 'bayesglm',
                  trControl = trControl)
 
@@ -864,8 +887,8 @@ lgreg_model <- train(target ~ .,
 # SVM
 grid <- expand.grid(C = seq(0.1, 2, length=5))
 svm_model <- train(target ~ .,
-                 data = observations_train %>% bind_rows(observations_valid), 
-                 method = 'svmLinear', 
+                 data = observations_train %>% bind_rows(observations_valid),
+                 method = 'svmLinear',
                  preProcess = c("center","scale"),
                  tuneGrid = grid,
                  trControl = trControl)
@@ -882,8 +905,8 @@ grid <- expand.grid(
   subsample = 1
 )
 xgb_model <- train(target ~ .,
-                 data = observations_train %>% bind_rows(observations_valid), 
-                 method = 'xgbTree', 
+                 data = observations_train %>% bind_rows(observations_valid),
+                 method = 'xgbTree',
                  trControl = trControl)
 ```
 
@@ -981,7 +1004,7 @@ plot_performance_xgb <- function(model) {
     facet_wrap(~gamma + eta, labeller = labeller(gamma = label_both, eta = label_both)) +
     labs(x = "C", y = "Score", colour = "Metric")
 }
-  
+
 precomputed_plots <- list(
   knn = list(
     confusion =  plot_confusion(knn_model, observations_test),
@@ -1014,7 +1037,7 @@ server <- function(input, output) {
   output$knn_confusion <- renderPlot({precomputed_plots$knn$confusion})
   output$knn_shapley <- renderPlot({precomputed_plots$knn$shapley})
   output$knn_perf <- renderPlot({precomputed_plots$knn$perf})
-  
+
   output$rf_confusion <- renderPlot({precomputed_plots$rf$confusion})
   output$rf_shapley <- renderPlot({precomputed_plots$rf$shapley})
   output$rf_perf <- renderPlot({precomputed_plots$rf$perf})
