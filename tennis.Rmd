@@ -247,7 +247,6 @@ renderPlotly({ ggplotly( ggplot(combined_DF %>% group_by(league, year) %>% summa
 
 The location on the world map of the top 50 tourneys.
 We get the latitude and longitude coordonates from tourney name using openstreetmap online API.
-
 ```{r plot_tourney_location, out.width="100%", message=FALSE, warning=FALSE}
 get_coordonates <- function(df) {
   long <- double(nrow(df))
@@ -310,6 +309,7 @@ wins_per_country_plot <- function() {
     geom_point(aes(x = lon, y = lat, size = tourney_wins, color = tourney_wins, label_country = country, label_combined = tourney_wins, label_atp = ATP, label_wta = WTA)) +
     scale_color_viridis(trans="log") +
     theme_void() +
+    ggtitle("Tourney wins by country breakdown")
     coord_quickmap()
   
   return (
@@ -317,7 +317,9 @@ wins_per_country_plot <- function() {
     )
 }
 
-renderPlotly({wins_per_country_plot()})
+x<-wins_per_country_plot()
+x
+# renderPlotly({wins_per_country_plot()})
 ```
 
 Plot the top tourney matches player per year
@@ -342,7 +344,8 @@ build_surface_type_plot <- function() {
     geom_linerange(aes(x = surface, ymin = 0, ymax = count, colour = league),  position = position_dodge(width = 0.5)) +
     geom_point(aes(x = surface, y = count, colour = league), size = 4, position = position_dodge(width = 0.5)) +
     scale_color_manual(values=c('#3366ff','red')) +
-    theme_classic()
+    theme_classic() +
+    labs(x="Surface type", y="Number of matches", color="League", title="Matches by surface type") +
   
   return (
     ggplotly({static_plot})
@@ -351,8 +354,6 @@ build_surface_type_plot <- function() {
 
   renderPlotly(build_surface_type_plot())
 ```
-
-#### Round statistics
 
 Average match length by round type.
 ```{r plot_average_math_length, out.width="100%", message=FALSE, warning=FALSE}
@@ -366,11 +367,11 @@ ggplot(combined_DF %>% filter(!is.na(minutes)) %>% group_by(league, round) %>%
   geom_boxplot(aes(fill=league), outlier.shape = NA) +
   scale_fill_manual(values=c('#3366ff','red')) +
   coord_cartesian(ylim = ylim * 1.5) +
-  labs(x="Winner hand", y="Loser hand", title="Box plot for match duration by round") +
+  labs(x="Round", y="Match lenght (minutes)", title="Match duration by round type") +
   theme_classic()
 ```
 
-#### Playing hand statistics
+#### Playing statistics
 
 Visualize how many players in both leagues use left, right or both hands for playing hand
 ```{r plot_player_hand_dist, out.width="100%", message=FALSE, warning=FALSE}
@@ -391,13 +392,12 @@ renderPlotly({ ggplotly( ggplot(combined_DF %>% filter(!is.na(winner_hand) & !is
          group_by(league, winner_hand, loser_hand) %>% summarise(no_matches = length(winner_hand), .groups = 'drop'),
        aes(winner_hand, loser_hand)) +
   geom_tile(aes(fill=no_matches)) +
-  scale_fill_gradient(low = "light gray", high = "blue") +
+  scale_fill_viridis_c() +
+  # scale_fill_gradient(low = "light gray", high = "blue") +
   labs(x="Winner hand", y="Loser hand", title="Tile plot for number of matches by backhand") +
   theme_classic() +
   facet_wrap(~league, nrow=1) ) })
 ```
-
-#### Serve statistics
 
 Correlation between serves and breaks with match wins
 ```{r plot_correlation, out.width="100%", message=FALSE, warning=FALSE}
@@ -430,8 +430,6 @@ ggplotly(ggplot(combined_DF %>% select(league, w_1stPercWon) %>% rename(perc_won
   facet_wrap(~league) +
   labs(x="Percentage won", y="Density", title="Percentage of 1st serves won (if serve is in)"))
 ```
-
-#### Rank difference
 
 Visualize the average rank by player age
 ```{r plot_average_age_by_rank, out.width="100%", message=FALSE, warning=FALSE}
