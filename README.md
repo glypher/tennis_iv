@@ -22,7 +22,7 @@ There are 49 columns in total. Below is breakdown by data type.
 * `winner_entry`
   * WC - Wild Card. Awarded at the discretion of organisers.
   * Q - Qualifier
-  * LL - Lucky Loser. Entered the competition because someone withdraw.
+  * LL - Lucky Loser. Entered the competition because someone withdrew.
   * PR - Protected Ranking. In case of injury, use your pre injury ranking
   * _  - other types account for less than 1% of data
 * `winner_name`
