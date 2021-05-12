@@ -1,6 +1,6 @@
 ---
-title: "tennis"
-author: "Mihai Matei, Catalin Stefan Cernat 511DS"
+title: "ATP and WTA Tennis Matches"
+author: "Mihai Matei, Catalin Stefan Cernat - 511 DS"
 date: "3/24/2021"
 output:
   html_document:
@@ -9,53 +9,70 @@ output:
 runtime: shiny
 ---
 
+<style type="text/css">
+
+.main-container {
+  max-width: 1080px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+h1.title {
+  font-size: 38px;
+  text-align: center;
+}
+
+h4.author {
+  text-align: center;
+}
+
+h4.date {
+  text-align: center;
+}
+
+<!-- .bigPlot { -->
+<!--   height: 800px !important; -->
+<!-- } -->
+
+.js-plotly-plot {
+  height: 600px !important;
+}
+
+</style>
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo=TRUE)
 ```
 
-## ATP and WTA Tennis Matches
+## Introduction
 
 ### Tennis
-
 Like with almost all sports, tennis has its own unique system for player ranking and progression.
 ATP (Association of Tennis Players) league for mens and WTA (Womens Tennis Association) league for women.
 While there are many tournaments in tennis, ATP and WTA tournaments represent the majority of them.
-
 
 ### Dataset
 All tennis related data was taken from the [GitHub repository](https://github.com/JeffSackmann/tennis_atp/) maintained by
 *Jeff Sackmann*. He has manually collected (with the help of volunteers) statistics for
 almost all ATP and WTA tournaments over the years. While collecting certain match statistics like who plays who, final score,
 and player ranks can be automated as this information is readily available from multiple sources, the repository
-contains more fine grained statistics like the number of faults, aces, serves in the court, server won and others which
+contains more fine-grained statistics like the number of faults, aces, serves in the court, server won and others which
 were manually collected by painstakingly watching every game.
 
 In total, the repository contains 178,077 ATP matches and 198,760 WTA matches for a total of 376,837 matches.
 The oldest matches in the dataset are from 1968 and 1948 for ATP and WTA respectively.
-Each data point contains 32 features, 2 continuous and 30 discrete (detailed below).
-
-Besides matches, the repository also contains ranking data. For both ATP and WTA, weekly standings are available
-starting from the 70s and 80s respectively. In total 4,664,522 data points are available.
-
-
-#### Features
-There are 32 features in the main dataset (matches). Some examples:
-* tournament name, level and date
-* surface type, match duration
-* winner id, loser id
-* player height, age, handedness, rank
-* serves in, serves won, aces, breaks faced, breaks saved
-
-Every player related feature (e.g. age, height, serves in) is available for both players.
-Aside from the provided features, we've created additional *synthetic* features like: breaks won and percentage of 1st serves won.
 
 ### Project aim
-The aim of our project is two-fold. First, we want to do Exploratory Data Analysis on all of the available data
-to try and find insightful and interesting statistics of any kind. Secondly, we would like to apply what we've
+The aim of our project is two-fold. First, we want to do Exploratory Data Analysis on all the available data
+to try to find insightful and interesting statistics of any kind. Secondly, we would like to apply what we've
 learned from exploring the data in order to train regression / classification models for different tasks.
 
+### Packages
+This project uses a wide range of packages, from indispensable ones like `rmarkdown` and `tidyverse` used in every chunk,
+to some which are more use case specific like `shiny` and `shinyWidgets` for interactive dashboards,
+`caret`, `xgboost`, `shapr` and `iml` for model training and interpretation and many more.
 
-```{r load_packages, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
+```{r load_packages, results='hide', message=FALSE, warning=FALSE}
 load_packages <- function(package_names) {
   list.of.packages <- as.vector(package_names)
   new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
@@ -70,9 +87,27 @@ slice <- dplyr::slice
 select <- dplyr::select
 ```
 
-#### Merging ATP and WTA matches CVS files
+### Data loading and curation
 
-```{r load_matches, echo=FALSE}
+#### ATP and WTA matches csv files
+Load the 128 `.csv` files containing matches for the ATP and WTA leagues. For each file,
+parse all variables with their correct data type, set correct ordered factors levels,
+create synthetic features. Finally, merge the data from the two leagues and create
+a new discriminator variable.
+
+Each data point contains 32 features, 2 continuous and 30 discrete.
+Some example features:
+
+* tournament name, level and date
+* surface type, match duration
+* winner id, loser id
+* player height, age, handedness, rank
+* serves in, serves won, aces, breaks faced, breaks saved
+
+Every player related feature (e.g. age, height, serves in) is available for both players.
+Aside from the provided features, we've created additional *synthetic* features like: breaks won and percentage of 1st serves won.
+
+```{r load_matches, message=FALSE, warning=FALSE}
 load_data <- function(directory, regex, column_types, col_names=TRUE) {
   list.files(path = directory, pattern = regex, full.names = T) %>%
     lapply( (function (file) read_csv(file, col_types = column_types, col_names = col_names)) ) %>% dplyr::bind_rows()
@@ -170,9 +205,12 @@ combined_DF <- bind_rows(list(ATP = singles_atp_DF, WTA = singles_wta_DF), .id =
 
 ```
 
-#### Merging ATP and WTA player CSV files
+#### ATP and WTA player csv files
+Load the two `.csv` files containing information for all ATP (55,022) and WTA (35,158) players like
+name, country and date of birth. Same as before, we combine the data from the two leagues
+and create a new discriminator variable.
 
-```{r load_players, echo=FALSE}
+```{r load_players, message=FALSE, warning=FALSE}
 col_names <- c(
   "player_id", "first_name", "last_name", "hand", "birth_date", "ioc"
 )
@@ -198,9 +236,11 @@ players_DF <- bind_rows(list(ATP = players_atp_DF, WTA = players_wta_DF), .id = 
     ioc = factor(ioc))
 ```
 
-#### Merging ATP and WTA rankings CSV files
+#### ATP and WTA rankings csv files
+Aside from matches and players info, the repository also contains ranking data. For both ATP and WTA, weekly standings are available
+starting from the 70s and 80s respectively. In total 4,664,522 data points are available.
 
-```{r load_rankings, echo=FALSE}
+```{r load_rankings, message=FALSE, warning=FALSE}
 col_names <- c("ranking_date", "rank", "player", "points")
 column_types <- cols(
   ranking_date = "c", # Parsed later (needs to specify format)
@@ -236,7 +276,10 @@ rankings_DF <- bind_rows(list(ATP = rankings_atp_DF, WTA = rankings_wta_DF), .id
 ```
 
 #### Load Country Codes CSV file
-```{r load_countries, echo=FALSE}
+Because for each player we only had the IOC code of his home country and we wanted the full name of the country,
+we obtained another dataset linking the two.
+
+```{r load_countries, message=FALSE, warning=FALSE}
 column_types <- cols(
   country = "c",
   ioc = "c"
@@ -246,11 +289,15 @@ country_DF <- load_data('./data', "country_codes.csv", column_types)
 ```
 
 
-### EDA
+## Exploratory Data Analysis
 
-#### Tourney statistics
-Evolution of the number of matches in the sport of tennis in recent years. In the 1970s there were many tennis tournaments such as WCT and NLT which competed for man players. At the end of 1972 US Open due to increased rivaly between different tournaments playes agreed to form the Association of Tennis Proessionals (ATP) and agreed to boycott several important tournamets such as Wimbledon.
-In 2020 the impact of coronavirus pandemy made a severe blow to the sport.
+### Tournament statistics
+Evolution of the number of matches in the sport of tennis in recent years.
+In the 1970s there were many tennis tournaments such as WCT and NLT which competed for male players.
+At the end of 1972 US Open due to increased rivalry between different tournaments players agreed to form the Association of Tennis Professionals (ATP)
+and to boycott several important tournaments such as Wimbledon.
+In 2020 the impact of Coronavirus pandemic was a severe blow for the sport.
+
 ```{r plot_matches_per_year, out.width="100%", message=FALSE, warning=FALSE}
 renderPlotly({ ggplotly( ggplot(combined_DF %>% group_by(league, year) %>% summarise(no_matches = length(year), .groups = 'drop'),
        aes(x=year, y=no_matches, group=league)) +
@@ -263,9 +310,11 @@ renderPlotly({ ggplotly( ggplot(combined_DF %>% group_by(league, year) %>% summa
   theme_classic() ) })
 ```
 
-The location on the world map of the top 50 tourneys.
-We get the latitude and longitude coordonates from tourney name using openstreetmap online API.
-```{r plot_tourney_location, out.width="100%", message=FALSE, warning=FALSE}
+The location on the world map of the top 50 tournaments.
+We get the latitude and longitude coordinates by tournament name using openstreetmap online API.
+The vast majority of tournaments are held in Europe, North America, and Australia / New Zealand.
+Only 5 tournaments are held outside these locations, Africa and South America only having one each.
+```{r plot_tourney_location, out.width="100%", class.source='bigPlot', message=FALSE, warning=FALSE}
 get_coordonates <- function(df) {
   long <- double(nrow(df))
   lat <- double(nrow(df))
@@ -292,15 +341,23 @@ get_coordonates <- function(df) {
 #write(tourney_coordonates_DF, 'data/tourney_coordonates.csv')
 tourney_coordonates_DF <- read.csv('data/tourney_coordonates.csv')
 
-renderPlotly({ ggplotly( ggplot(map_data("world"), aes(x=long, y=lat)) +
-  geom_polygon(aes(group=group, fill=region), color="white") +
-  geom_text(data=tourney_coordonates_DF, aes(label=tourney_name), size=3, hjust=0.5) +
-  geom_point(data=tourney_coordonates_DF, color="red", size=1) +
-  scale_fill_viridis_d() + ggtitle("Tourney world map") +
-  theme_classic() + theme(legend.position = "none") + coord_quickmap() ) })
+renderPlotly({
+  ggplotly(ggplot(map_data("world"), aes(x=long, y=lat)) +
+             geom_polygon(aes(group=group, fill=region), color="white") +
+             geom_text(data=tourney_coordonates_DF, aes(label=tourney_name), size=3, hjust=0.5) +
+             geom_point(data=tourney_coordonates_DF, color="red", size=1) +
+             scale_fill_viridis_d() +
+             ggtitle("Tourney world map") +
+             theme_classic() +
+             theme(legend.position = "none") +
+             coord_quickmap(), height = 600)
+  })
 ```
 
 World Map showing how many tournaments (ATP and WTA) individual countries have won.
+In the previous plot we saw that most tournaments are held in Europe, North America or Australia / New Zealand.
+Here, we can see almost the same trend present. Europe leads with most tourney wins, followed by the U.S. and Australia.
+However, except for Africa and S.E.A., there aren't many regions with a lack of tournament wins.
 ```{r plot_wins_by_country, out.width="100%", message=FALSE, warning=FALSE}
 
 wins_per_country_plot <- function() {
@@ -331,14 +388,22 @@ wins_per_country_plot <- function() {
     coord_quickmap()
 
   return (
-    ggplotly(static_plot, tooltip = c('label_country', 'label_combined', 'label_atp', 'label_wta'))
+    ggplotly(static_plot, tooltip = c('label_country', 'label_combined', 'label_atp', 'label_wta'), height = 600)
     )
 }
 
 renderPlotly({wins_per_country_plot()})
 ```
 
-Plot the top tourney matches player per year
+Evolution of matches per year for the top 6 most played tournaments.
+While the data doesn't go back as far as the beginning of these tournaments we can still see some interesting things.
+For example, there is a sharp increase in the Australian Open starting in the second half of the 80s. This is due to the tournament being
+moved Melbourne Park thus being more accessible and attracting more top level players.
+
+Another interesting data points can be seen in 1968, specifically by looking at Wimbledon. This was the year when
+amateur players (which played in Grand Slams but received no remuneration) were allowed to play with professionals
+(which didn't play in Grand Slams but received remuneration from the nobility). This is called the Open Era of tennis.
+
 ```{r plot_matches_per_year_top, out.width="100%", message=FALSE, warning=FALSE}
 top_tourney <- combined_DF %>% count(tourney_name) %>% top_n(6)
 renderPlotly({ ggplotly( ggplot(combined_DF %>% filter(tourney_name %in% top_tourney$tourney_name) %>% group_by(tourney_name) %>% count(year)) +
@@ -347,6 +412,11 @@ renderPlotly({ ggplotly( ggplot(combined_DF %>% filter(tourney_name %in% top_tou
   scale_x_continuous(breaks=seq(1848, 2021, 5)) +
   scale_color_viridis_d() + theme_classic() ) })
 ```
+
+### Match statistics
+Breakdown of marches by surface type. The most common surfaces types, for both ATP and WTA, are clay surfaces and hard surfaces.
+This is due to the fact that these surfaces are easier to maintain than grass and offer consistency
+(they don't deteriorate as fast grass does and if they do they can more easily be repaired, as opposed to waiting for the grass to grow again).
 
 ```{r plot_surface_type, out.width="100%", message=FALSE, warning=FALSE}
 build_surface_type_plot <- function() {
@@ -371,7 +441,9 @@ build_surface_type_plot <- function() {
 renderPlotly(build_surface_type_plot())
 ```
 
-Average match length by round type.
+Average match length by round type. Most round types have a mean match duration of around 90 minutes and about the same
+variance. The notable exception here would be R128 for ATP (maybe the players are more rested?). ATP matches also last longer
+than WTA ones (men might have more stamina; Grand Slams are also best of 5 for men).
 ```{r plot_average_math_length, out.width="100%", message=FALSE, warning=FALSE}
 
 # Get lower and upper whiskers
@@ -387,7 +459,7 @@ ggplot(combined_DF %>% filter(!is.na(minutes)) %>% group_by(league, round) %>%
   theme_classic()
 ```
 
-#### Playing statistics
+### Player statistics
 
 Visualize how many players in both leagues use left, right or both hands for playing hand
 ```{r plot_player_hand_dist, out.width="100%", message=FALSE, warning=FALSE}
@@ -434,7 +506,11 @@ ggplotly(ggplot(data = melt(serves_correlation), aes(x = Var1, y = Var2, fill = 
   labs(x="Variable 1", y="Variable 2", title="Correlation Matrix for serves and breaks"))
 ```
 
-Visualize the percentage of serves won if 1st serve is inside the court (how strong players 1st serve is)
+Percentage of serves won if the first serve lands inside the court. In tennis, for each game, a player gets
+a maximum of two serves. If the first one lands outside the court area or hits the net, the player is allowed
+another try. Because of this, players try to make their first server as good as possible and in turn making them more risky
+(e.g. they try to land the ball as close as possible to the lines). If the serve lands, there is high probability that
+the player will win the server, ~71% for ATP and ~63% for WTA.
 ```{r plot_1st_serve_won, out.width="100%", message=FALSE, warning=FALSE}
 ggplotly(ggplot(combined_DF %>% select(league, w_1stPercWon) %>% rename(perc_won = w_1stPercWon) %>%
          bind_rows(combined_DF %>% select(league, l_1stPercWon) %>% rename(perc_won = l_1stPercWon)) %>%
@@ -447,7 +523,15 @@ ggplotly(ggplot(combined_DF %>% select(league, w_1stPercWon) %>% rename(perc_won
   labs(x="Percentage won", y="Density", title="Percentage of 1st serves won (if serve is in)"))
 ```
 
-Visualize the average rank by player age
+Visualize the mean age by rank (averaged over an year) across the years.
+We can see that throughout the years the mean age over the same rank is higher for men
+than women.
+
+In 1985 the average are for rank 1 ATP and WTA was 25 years and 29 years respectively.
+While there were the occasional rank 1 over 30 (with note in WTA), most of the top tennis
+players were under 30. We can observe a slow an steady increase in age for top tennis players
+over the years. In the last years the top WTA player was frequently over 30 and the current ATP rank 1
+is over 30.
 ```{r plot_average_age_by_rank, out.width="100%", message=FALSE, warning=FALSE}
 
 age_by_rank_plot <- function() {
@@ -462,7 +546,8 @@ age_by_rank_plot <- function() {
 
   static_plot <- ggplot(df, aes(rank, avg_age, frame = year)) +
     geom_line(aes(color=league)) +
-    labs(x="Rank", y="Average age", title="Average Rank by Age")
+    scale_color_manual(values=c('#3366ff','red')) +
+    labs(x="Rank", y="Mean age", title="Mean age by rank")
 
   return (
     ggplotly(static_plot) %>%
@@ -471,11 +556,19 @@ age_by_rank_plot <- function() {
     )
 }
 
+# age_by_rank_plot()
 renderPlotly({age_by_rank_plot()})
 
 ```
 
-Visualize the average rank by player age (only looking at top 20)
+Number of active players by year for ATP and WTA. We saw in the last graph that as we progressed
+in time, there were more and more rank positions. This is due to the increase of active players in the ATP and
+WTA tournaments.
+
+We see a sharp increase starting in 1983 as ATP started to consolidate due to other
+tours starting to lose ground (Grand Prix and WCT - World Championship Tennis).
+There is also a decrease starting with 2015. This is mostly due to inactive players
+passively losing all their ATP points and no longer being included in the rankings.
 ```{r plot_players_by_year, out.width="100%", message=FALSE, warning=FALSE}
 build_players_by_year_plot <- function() {
   df <- rankings_DF %>%
@@ -488,7 +581,7 @@ build_players_by_year_plot <- function() {
     scale_x_continuous(breaks=seq(1848, 2021, 5)) +
     geom_line(aes(color=league), size=1) +
     scale_color_manual(values=c('#3366ff','red')) +
-    labs(x="Year", y="Number of players", title="Number of players per year") +
+    labs(x="Year", y="Number of players", title="Number of active players per year") +
     theme_classic()
 
   return (
