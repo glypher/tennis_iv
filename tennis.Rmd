@@ -335,9 +335,7 @@ wins_per_country_plot <- function() {
     )
 }
 
-x<-wins_per_country_plot()
-x
-# renderPlotly({wins_per_country_plot()})
+renderPlotly({wins_per_country_plot()})
 ```
 
 Plot the top tourney matches player per year
@@ -363,14 +361,14 @@ build_surface_type_plot <- function() {
     geom_point(aes(x = surface, y = count, colour = league), size = 4, position = position_dodge(width = 0.5)) +
     scale_color_manual(values=c('#3366ff','red')) +
     theme_classic() +
-    labs(x="Surface type", y="Number of matches", color="League", title="Matches by surface type") +
+    labs(x="Surface type", y="Number of matches", color="League", title="Matches by surface type")
   
   return (
-    ggplotly({static_plot})
+    ggplotly(static_plot)
   )
 }
 
-  renderPlotly(build_surface_type_plot())
+renderPlotly(build_surface_type_plot())
 ```
 
 Average match length by round type.
