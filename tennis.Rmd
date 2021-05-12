@@ -523,717 +523,717 @@ grid.arrange(p, p1, ncol=2)
 ```
 
 
-<!-- ### Player rank evolution -->
-
-<!-- Interactive page with ranking evolution of players and other statistics -->
-
-<!-- ```{r, message=FALSE, warning=FALSE} -->
-<!-- ui <- fluidPage( -->
-<!--   titlePanel("Player Statistics"), -->
-
-<!--   sidebarLayout( -->
-<!--     sidebarPanel( -->
-<!--       awesomeRadio( -->
-<!--         inputId = "league", -->
-<!--         label = "League", -->
-<!--         choices = c("ATP", "WTA"), -->
-<!--         selected = "ATP", -->
-<!--         status = "primary", -->
-<!--         inline=TRUE -->
-<!--       ), -->
-<!--       sliderInput("max_rank", -->
-<!--                   "Maximum player rank", -->
-<!--                   min = 1, -->
-<!--                   max = 1000, -->
-<!--                   value = 100), -->
-<!--       multiInput( -->
-<!--         inputId = "players", -->
-<!--         label = "Players:", -->
-<!--         choices = c("Initializing...") -->
-<!--       ), -->
-<!--       tableOutput("playerTable") -->
-<!--     ), -->
-
-<!--     # Show a plot of the generated distribution -->
-<!--     mainPanel( -->
-<!--       plotOutput("rankPlot"), -->
-<!--       plotOutput("winsPlot", height=300), -->
-<!--       plotOutput("acePlot", height=300), -->
-<!--     ) -->
-<!--   ) -->
-<!-- ) -->
-
-<!-- server <- function(input, output, session) { -->
-<!--   observeEvent(input$league, { -->
-<!--     league_players <- uiRankPlayers() %>% filter(league==input$league) -->
-<!--     updateMultiInput( -->
-<!--       session=session, -->
-<!--       inputId = "players", -->
-<!--       choices=league_players$full_name -->
-<!--     ) -->
-<!--   }) -->
-
-<!--   uiRankPlayers <- reactive({ -->
-<!--     max_ranking <- rankings_DF %>% rename(player_id=player) %>% group_by(player_id) %>% summarize(max_ranking=min(rank)) -->
-
-<!--     max_rank <- players_DF %>% mutate(birth_date=as.Date(birth_date), full_name=paste0(last_name, " ", first_name)) %>% -->
-<!--       filter(birth_date > as.Date('1980-01-01')) %>% -->
-<!--       inner_join(max_ranking, by=c("player_id")) %>% filter(max_ranking < input$max_rank) -->
-
-<!--     return (max_rank) -->
-<!--   }) -->
-
-<!--   uiPlayers <- reactive({ -->
-<!--     sel_players <- uiRankPlayers() %>% filter(full_name %in% input$players) -->
-<!--     sel_players <- rankings_DF %>% rename(player_id=player) %>% inner_join(sel_players, by=c("player_id")) -->
-<!--     return (sel_players) -->
-<!--   }) -->
-
-<!--   observeEvent(uiPlayers(), { -->
-<!--     output$rankPlot <- renderPlot({ -->
-<!--       ggplot(uiPlayers(), -->
-<!--              aes(x=ranking_date, y=rank, group=full_name)) + -->
-<!--         geom_line(aes(color=full_name), size=1) + -->
-<!--         labs(x="Date", y="Rank", title="Evolution of rank of players") + -->
-<!--         scale_colour_viridis_d() + theme_classic() -->
-<!--     }) -->
-
-<!--     players_DF <- uiPlayers() %>% select(player_id, full_name) %>% distinct() -->
-<!--     aces_DF <- combined_DF %>% select(winner_id, year, w_ace) %>% -->
-<!--       rename(player_id=winner_id) %>% inner_join(players_DF, by=c("player_id")) %>% -->
-<!--       na.omit() %>% -->
-<!--       group_by(full_name, year) %>% summarise(full_name=full_name, year=year, aces=mean(w_ace)) -->
-
-<!--     output$acePlot <- renderPlot({ -->
-<!--       ggplot(aces_DF, -->
-<!--              aes(x=year, y=aces, group=full_name)) + -->
-<!--         geom_line(aes(color=full_name), size=1) + -->
-<!--         labs(x="Date", y="Average aces per match", title="Evolution of 1st ace of players") + -->
-<!--         scale_colour_viridis_d() + theme_classic() -->
-<!--     }) -->
-
-<!--     game_DF <- combined_DF %>% select(winner_id, w_1stWon, w_2ndWon, w_breaks) %>% -->
-<!--       rename(player_id=winner_id) %>% inner_join(players_DF, by=c("player_id")) %>% -->
-<!--       na.omit() %>% rename(FirstServeWon=w_1stWon, SecondServeWon=w_2ndWon, Breaks=w_breaks) %>% -->
-<!--       gather(key="Statistic", value="n", 2,3,4) %>% group_by(full_name) -->
-
-<!--     output$winsPlot <- renderPlot({ -->
-<!--       ggplot(game_DF, -->
-<!--              aes(x=Statistic, y=n, fill=full_name)) + -->
-<!--         geom_boxplot() + coord_flip() + -->
-<!--         labs(title="Evolution of game wons and break") + -->
-<!--         scale_colour_viridis_d() + theme_classic() -->
-<!--     }) -->
-
-<!--     player_stats <- uiPlayers() %>% distinct(full_name, birth_date, ioc, hand) %>% -->
-<!--       mutate(birth_date=format(birth_date, "%Y-%m-%d")) %>% -->
-<!--       mutate(hand=recode(hand, L="Left", R="Right", U="Both")) %>% -->
-<!--       rename(Name=full_name, Birthdate=birth_date, Country=ioc, Hand=hand) -->
-<!--     output$playerTable <- renderTable(player_stats %>% select(Name, Country, Birthdate, Hand), -->
-<!--                                       spacing="xs", striped=TRUE) -->
-<!--   }) -->
-
-<!-- } -->
-
-<!-- shinyApp(ui, server, options=list(height=800)) -->
-<!-- ``` -->
-
-<!-- ### Regression models for predicting players rank difference -->
-
-<!-- Dashboard for different gression models applied to a 90-10% train-test split on matches that took place after 2005. -->
-
-<!-- ```{r, warning=FALSE, message=FALSE} -->
-<!-- split_data <- function(data, test) { -->
-<!--   spec = c(train = 1 - test, test = test) -->
-<!--   N = nrow(data) -->
-<!--   set.seed(Sys.time()) -->
-<!--   data_split = sample(cut( seq(N), N * cumsum(c(0, spec)), labels = names(spec) )) -->
-
-<!--   return(split(data, data_split)) -->
-<!-- } -->
-
-<!-- # Setting up features and target -->
-<!-- data_set <- combined_DF %>% filter(year > 2005) %>% -->
-<!--   filter(!is.na(winner_rank) & !is.na(loser_rank)) %>% -->
-<!--   mutate(rank_diff=winner_rank-loser_rank) %>% -->
-<!--   select(c(rank_diff, winner_age, loser_age, winner_rank_points, loser_rank_points, -->
-<!--            minutes, w_ace, w_df, l_ace, l_df, w_1stWon, w_2ndWon, w_breaks, l_breaks -->
-<!--            )) %>% na.omit() %>% -->
-<!--   split_data(0.1) -->
-
-
-<!-- # Regression Models -->
-<!-- r_models <- c() -->
-<!-- # Linear with different IC -->
-<!-- r_models$lm <- lm(rank_diff ~ ., data_set$train) -->
-<!-- r_models$aic <- step(r_models$lm, trace=0) -->
-<!-- r_models$bic <- step(r_models$lm, trace=0, k=log(nrow(data_set$train))) -->
-
-<!-- # Generalized Linear model -->
-<!-- r_models$glm <- glm(rank_diff ~ .  , family=quasi(), data=data_set$train) -->
-
-<!-- # XgBoost -->
-<!-- data_matrix <- c() -->
-<!-- data_matrix$train <- c() -->
-<!-- data_matrix$train$X = as.matrix(data_set$train)[,2:ncol(data_set$train)] -->
-<!-- data_matrix$train$Y = as.matrix(data_set$train)[,1] -->
-<!-- data_matrix$test <- c() -->
-<!-- data_matrix$test$X = as.matrix(data_set$test)[,2:ncol(data_set$test)] -->
-<!-- data_matrix$test$Y = as.matrix(data_set$test)[,1] -->
-<!-- r_models$xgb <- xgboost(data=data_matrix$train$X, label=data_matrix$train$Y, -->
-<!--                         nrounds=2000, objective = "reg:squarederror", verbose=0) -->
-
-<!-- ui_tab <- function(name, text, width=600) { -->
-<!--   tabItem(tabName = name, -->
-<!--           fluidRow( -->
-<!--             h3(text), -->
-<!--             box(splitLayout(cellWidths = c("50%", "50%"), plotOutput(paste0(name, "_res"), width=width/2, height = 400), -->
-<!--                 plotOutput(paste0(name, "_pred"), width=width/2, height = 400)), width=width, collapsible=TRUE)), -->
-<!--           fluidRow( -->
-<!--             box(plotOutput(paste0(name, "_sha"), width=width, height = 400), width=width, collapsible=TRUE)), -->
-<!--           fluidRow( -->
-<!--             box(h4("Model Performance"), -->
-<!--                 verbatimTextOutput(paste0(name, "_p")), width=width, collapsible=TRUE)), -->
-<!--           fluidRow( -->
-<!--             box(h4("Model Summary"), -->
-<!--                 verbatimTextOutput(paste0(name, "_s")), width=width, collapsible=TRUE))) -->
-<!-- } -->
-
-<!-- ui <- dashboardPage( -->
-<!--   dashboardHeader(title = "Rank difference"), -->
-<!--   dashboardSidebar( -->
-<!--     div("Regression Models"), -->
-<!--     sidebarMenu( -->
-<!--       menuItem("Linear Model", tabName = "lm", icon = icon("th")), -->
-<!--       menuItem("Linear Model with AIC", tabName = "aic", icon = icon("th")), -->
-<!--       menuItem("Linear Model with BIC", tabName = "bic", icon = icon("th")), -->
-<!--       menuItem("General Linear Model", tabName = "glm", icon = icon("th")), -->
-<!--       menuItem("XGBoost", tabName = "xgb", icon = icon("th")) -->
-<!--     ) -->
-<!--   ), -->
-
-<!--   dashboardBody( -->
-<!--     tabItems( -->
-<!--       ui_tab("lm", "Plain Linear Model"), -->
-<!--       ui_tab("aic", "Linear Model with Akaike Information Criterion"), -->
-<!--       ui_tab("bic", "Linear Model with Bayesian Information Criterion"), -->
-<!--       ui_tab("glm", "General Linear Model"), -->
-<!--       ui_tab("xgb", "Extreme Gradient Boosting Tree") -->
-<!--     ) -->
-<!--   ) -->
-<!-- ) -->
-
-
-<!-- rsquared <- function(true, predicted, has_intercept) { -->
-<!--   sse <- sum((predicted - true)^2) -->
-<!--   sst <- ifelse(has_intercept, sum((true - mean(true))^2), sum(true^2)) -->
-<!--   rsq <- 1 - sse / sst -->
-
-<!--   return (round(rsq, digits=5)) -->
-<!-- } -->
-
-<!-- mean_squared_error <- function(true, predicted) { -->
-<!--   return( round(mean((predicted - true) ^ 2), digits=5) ) -->
-<!-- } -->
-
-<!-- do_predict <- function(model, data) { -->
-<!--   y_hat <- tryCatch( -->
-<!--     {predict(model, data %>% select(-c(rank_diff)))}, -->
-<!--     error=function(cond) { -->
-<!--       predict(model, as.matrix(data %>% select(-c(rank_diff)))) -->
-<!--     } -->
-<!--   ) -->
-<!--   return (y_hat) -->
-<!-- } -->
-
-<!-- plot_residuals <- function(model) { -->
-<!--   y_hat <- model$y_hat_train -->
-<!--   residuals <- data_set$train$rank_diff - y_hat -->
-<!--   ggplot(data.frame(Residuals=abs(residuals), Predictions=y_hat), -->
-<!--               aes(Predictions, Residuals)) + -->
-<!--     geom_point(color="blue") + -->
-<!--     labs(title="Homoscedascity for residuals") + -->
-<!--     theme_bw() + theme(plot.title = element_text(hjust = 0.5)) -->
-<!-- } -->
-
-<!-- plot_predictions <- function(model) { -->
-<!--   y_hat <- model$y_hat_train -->
-<!--   ggplot(data.frame(Predictions=y_hat), -->
-<!--               aes(x=Predictions)) + -->
-<!--     geom_freqpoly(bins=100) + -->
-<!--     labs(x="Rank difference", y="Number of predictions", title="Predicted distribution of rank difference")  + -->
-<!--     theme_bw() + theme(plot.title = element_text(hjust = 0.5)) -->
-<!-- } -->
-
-<!-- plot_shapr <- function(model) { -->
-<!--   explainer <- model$explainer -->
-<!--   # for first 2 test samples -->
-<!--   explanation <- explain(data_set$test %>% select(-c(rank_diff)) %>% slice(1:2), approach="gaussian", -->
-<!--                          explainer=explainer, prediction_zero=mean(data_set$train$rank_diff)) -->
-<!--   plot(explanation, plot_phi0 = FALSE) -->
-<!-- } -->
-
-<!-- print_performance <- function(model) { -->
-<!--   y_hat_train <- model$y_hat_train -->
-<!--   y_hat_test <- model$y_hat_test -->
-
-<!--   paste0('TRAIN R^2: ', rsquared(data_set$train$rank_diff, y_hat_train, TRUE), -->
-<!--          '   TRAIN MSE: ', mean_squared_error(data_set$train$rank_diff, y_hat_train), -->
-<!--          '   TEST R^2: ', rsquared(data_set$test$rank_diff, y_hat_test, TRUE), -->
-<!--          '   TEST MSE: ', mean_squared_error(data_set$test$rank_diff, y_hat_test)) -->
-<!-- } -->
-
-<!-- for (i in 1:length(r_models)) { -->
-<!--   model <- r_models[[i]] -->
-<!--   model$y_hat_train <- do_predict(model, data_set$train) -->
-<!--   model$y_hat_test <- do_predict(model, data_set$test) -->
-<!--   model$explainer <- shapr(data_set$train %>% select(-c(rank_diff)), model) -->
-<!--   model$res_plot <- plot_residuals(model) -->
-<!--   model$res_pred <- plot_predictions(model) -->
-<!--   model$shapr_plot <- plot_shapr(model) -->
-<!--   model$perf <- print_performance(model) -->
-<!--   r_models[[i]] <- model -->
-<!-- } -->
-
-
-<!-- server <- function(input, output) { -->
-<!--   output$lm_res <- renderPlot({r_models$lm$res_plot}) -->
-<!--   output$lm_pred <- renderPlot({r_models$lm$res_pred}) -->
-<!--   output$lm_sha <- renderPlot({r_models$lm$shapr_plot}) -->
-<!--   output$lm_p <- renderPrint({r_models$lm$perf}) -->
-<!--   output$lm_s <- renderPrint({summary(r_models$lm)}) -->
-
-<!--   output$aic_res <- renderPlot({r_models$aic$res_plot}) -->
-<!--   output$aic_pred <- renderPlot({r_models$aic$res_pred}) -->
-<!--   output$aic_sha <- renderPlot({r_models$aic$shapr_plot}) -->
-<!--   output$aic_p <- renderPrint({r_models$aic$perf}) -->
-<!--   output$aic_s <- renderPrint({summary(r_models$aic)}) -->
-
-<!--   output$bic_res <- renderPlot({r_models$bic$res_plot}) -->
-<!--   output$bic_pred <- renderPlot({r_models$bic$res_pred}) -->
-<!--   output$bic_sha <- renderPlot({r_models$bic$shapr_plot}) -->
-<!--   output$bic_p <- renderPrint({r_models$bic$perf}) -->
-<!--   output$bic_s <- renderPrint({summary(r_models$bic)}) -->
-
-<!--   output$glm_res <- renderPlot({r_models$glm$res_plot}) -->
-<!--   output$glm_pred <- renderPlot({r_models$glm$res_pred}) -->
-<!--   output$glm_sha <- renderPlot({r_models$glm$shapr_plot}) -->
-<!--   output$glm_p <- renderPrint({r_models$glm$perf}) -->
-<!--   output$glm_s <- renderPrint({summary(r_models$glm)}) -->
-
-<!--   output$xgb_res <- renderPlot({r_models$xgb$res_plot}) -->
-<!--   output$xgb_pred <- renderPlot({r_models$xgb$res_pred}) -->
-<!--   output$xgb_sha <- renderPlot({r_models$xgb$shapr_plot}) -->
-<!--   output$xgb_p <- renderPrint({r_models$xgb$perf}) -->
-<!--   output$xgb_s <- renderPrint({summary(r_models$xgb)}) -->
-<!-- } -->
-
-<!-- shinyApp(ui, server, options=list(height=1200)) -->
-<!-- ``` -->
-
-
-<!-- ### Classification models for predicting who will win a match -->
-<!-- ```{r, echo=FALSE, results='hide', message=FALSE, warning=FALSE} -->
-<!-- average_stat <- function(stat, league) { -->
-<!--   w_stat <- paste('winner_', stat, sep = "") -->
-<!--   l_stat <- paste('loser_', stat, sep = "") -->
-
-<!--   return ((combined_DF %>% -->
-<!--             select(stat_1 = w_stat, stat_2 = l_stat) %>% -->
-<!--             filter(!is.na(stat_1), !is.na(stat_2), league == league) %>% -->
-<!--             mutate(avg_stat = (stat_1 + stat_2) / 2) %>% -->
-<!--             summarise(value = mean(avg_stat)))$value) -->
-<!-- } -->
-
-<!-- max_or_default <- function(values, default) { -->
-<!--   if (all(is.na(values))) { -->
-<!--     return (default) -->
-<!--   } else { -->
-<!--     return (max(values, na.rm = TRUE)) -->
-<!--   } -->
-<!-- } -->
-
-<!-- get_player_stats <- function(end_date, period) { -->
-
-<!--   # Compute average values to replace nas -->
-<!--   avg_age_atp <- average_stat('age', 'ATP') -->
-<!--   avg_age_wta <- average_stat('age', 'WTA') -->
-<!--   avg_ht_atp <- average_stat('ht', 'ATP') -->
-<!--   avg_ht_wta <- average_stat('ht', 'WTA') -->
-
-<!--   recent_matches_DF <- combined_DF %>% filter(tourney_date >= end_date - years(period), tourney_date < end_date) -->
-
-<!--   # Transform matches data frame - separate winner and loser stats on different rows -->
-<!--   recent_matches_t_DF <- recent_matches_DF %>% -->
-<!--     rename(player_id=winner_id, bpFaced=w_bpFaced, bpSaved=w_bpSaved, breaks=w_breaks, -->
-<!--            aces=w_ace, p1stWon = w_1stWon,  p1stIn = w_1stIn, df = w_df, age = winner_age, -->
-<!--            ht = winner_ht) %>% -->
-<!--     bind_rows(recent_matches_DF %>% -->
-<!--                 rename(player_id=loser_id, bpFaced=l_bpFaced, bpSaved=l_bpSaved, breaks=l_breaks, -->
-<!--                        aces = l_ace, p1stWon = l_1stWon,  p1stIn = l_1stIn, df = l_df, age = loser_age, -->
-<!--                        ht = loser_ht)) -->
-
-<!--   # Create a players statistics data frame -->
-<!--   players_stats_DF <- recent_matches_t_DF %>% group_by(league, player_id) %>% -->
-<!--     replace_na(list(breaks=0, matches=0, aces=0, p1stWon = 0, p1stIn = 0, df = 0)) %>% -->
-<!--     summarise(matches = n(), breaksP = sum(breaks) / n(), acesP = sum(aces) / n(), -->
-<!--               dfP = sum(df) / n(), p1stWonP = sum(p1stWon) / sum(p1stIn), -->
-<!--               age = max_or_default(age, if(league[1] == 'ATP') avg_age_atp else avg_age_wta), -->
-<!--               ht = max_or_default(ht, if(league[1] == 'ATP') avg_ht_atp else avg_ht_wta)) %>% -->
-<!--     ungroup() %>% -->
-<!--     replace_na(list(p1stWonP=0)) -->
-
-<!--   return (players_stats_DF) -->
-<!-- } -->
-
-<!-- get_observations <- function(matches, player_stats_period) { -->
-<!--   earliest_tourney <- matches %>% slice(which.min(tourney_date)) %>% .$tourney_date -->
-<!--   player_stats <- get_player_stats(earliest_tourney, player_stats_period) -->
-
-<!--   observations <- matches %>% -->
-<!--     left_join(player_stats, by=c("winner_id"="player_id", "league"="league")) %>% -->
-<!--     left_join(player_stats, by=c("loser_id"="player_id", "league"="league"), suffix=c(".w", ".l")) %>% -->
-<!--     replace_na(list(winner_rank=0, loser_rank=0, winner_rank_points=0, loser_rank_points=0, surface='Hard', -->
-<!--                     age.w=0, age.l=0, ht.w=0, ht.l=0, matches.w=0, matches.l=0, breaksP.w=0, breaksP.l=0, -->
-<!--                     acesP.w=0, acesP.l=0, dfP.w=0, dfP.l=0, p1stWonP.w=0, p1stWonP.l=0)) -->
-
-<!--   n_rows <- observations %>% nrow() -->
-<!--   observations_pos <- observations %>% sample_n((n_rows + 1)/ 2, replace=FALSE) -->
-<!--   observations_neg <- anti_join(observations, observations_pos) -->
-
-<!--   observations_pos <- observations_pos %>% mutate(rank_d = winner_rank - loser_rank, -->
-<!--                        points_d = winner_rank_points - loser_rank_points, -->
-<!--                        age_d = age.w- age.l, -->
-<!--                        ht_d = ht.w - ht.l, -->
-<!--                        matches_d = matches.w - matches.l, -->
-<!--                        breaksP_d = breaksP.w - breaksP.l, -->
-<!--                        acesP_d = acesP.w - acesP.l, -->
-<!--                        dfP_d = dfP.w - dfP.l, -->
-<!--                        p1stWonP_d = p1stWonP.w - p1stWonP.l, -->
-<!--                        target = 1) %>% -->
-<!--     select(league, age_d, ht_d, rank_d, points_d, matches_d, breaksP_d, acesP_d, dfP_d, p1stWonP_d, target) -->
-
-<!--   observations_neg <- observations_neg %>% mutate(rank_d = loser_rank - winner_rank, -->
-<!--                        points_d = loser_rank_points - winner_rank_points, -->
-<!--                        age_d = age.l- age.w, -->
-<!--                        ht_d = ht.l - ht.w, -->
-<!--                        matches_d = matches.l - matches.w, -->
-<!--                        breaksP_d = breaksP.l - breaksP.w, -->
-<!--                        acesP_d = acesP.l - acesP.w, -->
-<!--                        dfP_d = dfP.l - dfP.w, -->
-<!--                        p1stWonP_d = p1stWonP.l - p1stWonP.w, -->
-<!--                        target = -1) %>% -->
-<!--     select(league, age_d, ht_d, rank_d, points_d, matches_d, breaksP_d, acesP_d, dfP_d, p1stWonP_d, target) -->
-
-<!--   return (observations_pos %>% -->
-<!--             bind_rows(observations_neg) %>% -->
-<!--             mutate(target = factor(target)) -->
-<!--           ) -->
-<!-- } -->
-
-<!-- # Data Split -->
-<!-- train_matches <- combined_DF %>% filter(tourney_date >= '2017-01-01', tourney_date < '2018-01-01' ) -->
-<!-- valid_matches <- combined_DF %>% filter(tourney_date >= '2018-01-01', tourney_date < '2019-01-01' ) -->
-<!-- test_matches <- combined_DF %>% filter(tourney_date >= '2019-01-01', tourney_date < '2020-01-01' ) -->
-<!-- test_grand_slams <- test_matches %>% filter(tourney_level == 'G') -->
-<!-- ui_filtered_matches <- test_grand_slams -->
-
-<!-- # Observations -->
-<!-- observations_train <- get_observations(train_matches, 5) -->
-<!-- observations_valid <- get_observations(valid_matches, 5) -->
-<!-- observations_test <- get_observations(test_matches, 5) -->
-
-
-<!-- # Train Models -->
-<!-- train_rows <- observations_train %>% nrow() -->
-<!-- train_idx <- c(1:train_rows) -->
-<!-- valid_rows <- observations_valid %>% nrow() -->
-<!-- valid_idx <- c((train_rows + 1):(train_rows + valid_rows)) -->
-
-<!-- trControl <- trainControl( -->
-<!--  index = list(train_idx), -->
-<!--  indexOut = list(valid_idx), -->
-<!--  indexFinal = valid_idx -->
-<!-- ) -->
-
-
-<!-- # KNN -->
-<!-- grid <- expand.grid(k = c(3, 5, 7, 9, 11, 13)) -->
-<!-- knn_model <- train(target ~ ., -->
-<!--                    data =  observations_train %>% bind_rows(observations_valid), -->
-<!--                    method = "knn", -->
-<!--                    preProcess = c("center","scale"), -->
-<!--                    trControl = trControl, -->
-<!--                    tuneGrid = grid) -->
-
-<!-- # Random Forest -->
-<!-- grid <- expand.grid(.mtry = (1:(ncol(observations_train) - 1))) -->
-<!-- rf_model <- train(target ~ ., -->
-<!--                  data = observations_train %>% bind_rows(observations_valid), -->
-<!--                  method = 'rf', -->
-<!--                  trControl = trControl, -->
-<!--                  tuneGrid = grid, -->
-<!--                  ntree = 15) -->
-
-
-<!-- # Logistic Regression -->
-<!-- lgreg_model <- train(target ~ ., -->
-<!--                  data = observations_train %>% bind_rows(observations_valid), -->
-<!--                  method = 'bayesglm', -->
-<!--                  trControl = trControl) -->
-
-
-<!-- # SVM -->
-<!-- grid <- expand.grid(C = seq(0.1, 2, length=5)) -->
-<!-- svm_model <- train(target ~ ., -->
-<!--                  data = observations_train %>% bind_rows(observations_valid), -->
-<!--                  method = 'svmLinear', -->
-<!--                  preProcess = c("center","scale"), -->
-<!--                  tuneGrid = grid, -->
-<!--                  trControl = trControl) -->
-
-
-<!-- # XG Boost -->
-<!-- grid <- expand.grid( -->
-<!--   nrounds = 50, -->
-<!--   eta = c(0.1, 0.3, 0.5), -->
-<!--   max_depth = c(2, 4, 6), -->
-<!--   gamma = c(0.0, 0.5), -->
-<!--   colsample_bytree = 1, -->
-<!--   min_child_weight = 1, -->
-<!--   subsample = 1 -->
-<!-- ) -->
-<!-- xgb_model <- train(target ~ ., -->
-<!--                  data = observations_train %>% bind_rows(observations_valid), -->
-<!--                  method = 'xgbTree', -->
-<!--                  trControl = trControl) -->
-<!-- ``` -->
-
-<!-- #### Model interpretation -->
-<!-- ```{r, echo=FALSE} -->
-
-<!-- ui_tab <- function(name, text, width=600) { -->
-<!--   tabItem(tabName = name, -->
-<!--           fluidRow( -->
-<!--             h3(text), -->
-<!--             box(plotOutput(paste0(name, "_confusion"), width=width, height = 400), width=width, collapsible=TRUE)), -->
-<!--           fluidRow( -->
-<!--             box(plotOutput(paste0(name, "_shapley"), width=width, height = 400), width=width, collapsible=TRUE)), -->
-<!--           fluidRow( -->
-<!--             box(plotOutput(paste0(name, "_perf"), width=width, height = 400), width=width, collapsible=TRUE)) -->
-<!--   ) -->
-<!-- } -->
-
-<!-- ui <- dashboardPage( -->
-<!--   dashboardHeader(title = "Match Prediction"), -->
-<!--   dashboardSidebar( -->
-<!--     div("Classification Models"), -->
-<!--     sidebarMenu( -->
-<!--       menuItem("KNN", tabName = "knn", icon = icon("th")), -->
-<!--       menuItem("Random Forest", tabName = "rf", icon = icon("th")), -->
-<!--       menuItem("SVM", tabName = "svm", icon = icon("th")), -->
-<!--       menuItem("Logistic Regression", tabName = "lgreg", icon = icon("th")), -->
-<!--       menuItem("XGBoost", tabName = "xgb", icon = icon("th")) -->
-<!--     ) -->
-<!--   ), -->
-
-<!--   dashboardBody( -->
-<!--     tabItems( -->
-<!--       ui_tab("knn", "KNN"), -->
-<!--       ui_tab("rf", "Random Forest"), -->
-<!--       ui_tab("svm", "SVM"), -->
-<!--       ui_tab("lgreg", "Logistic Regression"), -->
-<!--       ui_tab("xgb", "XGBoost") -->
-<!--       ) -->
-<!--     ) -->
-<!--   ) -->
-
-<!-- # Precompute plots -->
-<!-- plot_confusion <- function(model, observations) { -->
-<!--   predictions <- predict(model, newdata = observations) -->
-<!--   confusion <- confusionMatrix(predictions, observations$target) -->
-<!--   confusion_values <- as.data.frame(confusion$table) -->
-
-<!--   return (ggplot(data = confusion_values, mapping = aes(x = Prediction, y = Reference)) + -->
-<!--     geom_tile(aes(fill = Freq), colour = "white") + -->
-<!--     geom_text(aes(label = sprintf("%1.0f", Freq)), vjust = 1, color = "white", size=12) + -->
-<!--     scale_fill_viridis_c()) -->
-<!-- } -->
-
-<!-- plot_shapley <- function(model, train, test) { -->
-<!--   features <- train %>% select(-target) %>% as.data.frame() -->
-<!--   predictor <- Predictor$new(model, data = features, y = train$target) -->
-<!--   shapley <- Shapley$new(predictor, x.interest = test[1:15, -11]) -->
-
-<!--   shapley$results %>% filter(class == 1) %>% -->
-<!--     ggplot(aes(x = feature, y = phi)) + -->
-<!--     geom_bar(stat = "identity") + -->
-<!--     coord_flip() -->
-<!-- } -->
-
-<!-- plot_performance_knn <- function(model) { -->
-<!--   data <- melt(model$results %>% select(k, Accuracy, Kappa), id="k") -->
-<!--   ggplot(data = data) + -->
-<!--     geom_line(aes(x = k, y = value, color = variable)) + -->
-<!--     geom_point(aes(x = k, y = value, fill = variable), shape=21, size=6, show.legend = FALSE) + -->
-<!--     labs(x = "Neighbours", y = "Score", colour = "Metric") -->
-<!-- } -->
-
-<!-- plot_performance_rf <- function(model) { -->
-<!--   data <- melt(model$results %>% select(mtry, Accuracy, Kappa), id="mtry") -->
-<!--   ggplot(data = data) + -->
-<!--     geom_line(aes(x = mtry, y = value, color = variable)) + -->
-<!--     geom_point(aes(x = mtry, y = value, fill = variable), shape=21, size=6, show.legend = FALSE) + -->
-<!--     labs(x = "# Variables per split", y = "Score", colour = "Metric") -->
-<!-- } -->
-
-<!-- plot_performance_svm <- function(model) { -->
-<!--   data <- melt(model$results %>% select(C, Accuracy, Kappa), id="C") -->
-<!--   ggplot(data = data) + -->
-<!--     geom_line(aes(x = C, y = value, color = variable)) + -->
-<!--     geom_point(aes(x = C, y = value, fill = variable), shape=21, size=6, show.legend = FALSE) + -->
-<!--     labs(x = "C", y = "Score", colour = "Metric") -->
-<!-- } -->
-
-<!-- plot_performance_xgb <- function(model) { -->
-<!--   data <- melt(model$results %>% select(max_depth, gamma, eta, Accuracy, Kappa), id= c("max_depth", "gamma", "eta")) -->
-<!--   ggplot(data = data) + -->
-<!--     geom_line(aes(x = max_depth, y = value, color = variable)) + -->
-<!--     geom_point(aes(x = max_depth, y = value, fill = variable), shape=21, size=6, show.legend = FALSE) + -->
-<!--     facet_wrap(~gamma + eta, labeller = labeller(gamma = label_both, eta = label_both)) + -->
-<!--     labs(x = "C", y = "Score", colour = "Metric") -->
-<!-- } -->
-
-<!-- precomputed_plots <- list( -->
-<!--   knn = list( -->
-<!--     confusion =  plot_confusion(knn_model, observations_test), -->
-<!--     shapley = plot_shapley(knn_model, observations_train, observations_test), -->
-<!--     perf = plot_performance_knn(knn_model) -->
-<!--   ), -->
-<!--   rf = list( -->
-<!--     confusion = plot_confusion(rf_model, observations_test), -->
-<!--     shapley = plot_shapley(rf_model, observations_train, observations_test), -->
-<!--     perf = plot_performance_rf(rf_model) -->
-<!--   ), -->
-<!--   svm = list( -->
-<!--     confusion = plot_confusion(svm_model, observations_test), -->
-<!--     shapley = plot_shapley(svm_model, observations_train, observations_test), -->
-<!--     perf = plot_performance_svm(svm_model) -->
-<!--   ), -->
-<!--   lgreg = list( -->
-<!--     confusion = plot_confusion(lgreg_model, observations_test), -->
-<!--     shapley = plot_shapley(lgreg_model, observations_train, observations_test) -->
-<!--   ), -->
-<!--   xgb = list( -->
-<!--     confusion = plot_confusion(xgb_model, observations_test), -->
-<!--     shapley = plot_shapley(xgb_model, observations_train, observations_test), -->
-<!--     perf = plot_performance_xgb(xgb_model) -->
-<!--   ) -->
-<!-- ) -->
-
-
-<!-- server <- function(input, output) { -->
-<!--   output$knn_confusion <- renderPlot({precomputed_plots$knn$confusion}) -->
-<!--   output$knn_shapley <- renderPlot({precomputed_plots$knn$shapley}) -->
-<!--   output$knn_perf <- renderPlot({precomputed_plots$knn$perf}) -->
-
-<!--   output$rf_confusion <- renderPlot({precomputed_plots$rf$confusion}) -->
-<!--   output$rf_shapley <- renderPlot({precomputed_plots$rf$shapley}) -->
-<!--   output$rf_perf <- renderPlot({precomputed_plots$rf$perf}) -->
-
-<!--   output$svm_confusion <- renderPlot({precomputed_plots$svm$confusion}) -->
-<!--   output$svm_shapley <- renderPlot({precomputed_plots$svm$shapley}) -->
-<!--   output$svm_perf <- renderPlot({precomputed_plots$svm$perf}) -->
-
-<!--   output$lgreg_confusion <- renderPlot({precomputed_plots$lgreg$confusion}) -->
-<!--   output$lgreg_shapley <- renderPlot({precomputed_plots$rf$shapley}) -->
-
-<!--   output$xgb_confusion <- renderPlot({precomputed_plots$xgb$confusion}) -->
-<!--   output$xgb_shapley <- renderPlot({precomputed_plots$xgb$shapley}) -->
-<!--   output$xgb_perf <- renderPlot({precomputed_plots$xgb$perf}) -->
-<!-- } -->
-
-<!-- shinyApp(ui, server, options=list(height=1200)) -->
-<!-- ``` -->
-
-<!-- #### Interactive Prediction -->
-<!-- ```{r, echo=FALSE} -->
-
-<!-- class_ui <- dashboardPage( -->
-<!--   dashboardHeader(title = "Interactive Predictions"), -->
-<!--   dashboardSidebar( -->
-<!--     collapsed = TRUE -->
-<!--   ), -->
-
-<!--   dashboardBody( -->
-<!--     fluidRow( -->
-<!--       h3("Predicting ATP and WTA 2019 Grand Slam matches"), -->
-<!--       pickerInput(inputId="in_league", label="Select League", choices=c('WTA', 'ATP')), -->
-<!--       pickerInput(inputId="in_tourney_name", label="Select Tourney", choices=c()), -->
-<!--       pickerInput(inputId="in_tourney_round", label="Select Round", choices=c()), -->
-<!--       pickerInput(inputId="in_tourney_match", label="Select Match", choices=c('000 - ')) -->
-<!--     ), -->
-<!--     fluidRow( -->
-<!--       h3("Winnig Odds"), -->
-<!--       box(width=600, height = 400, plotOutput("odds_plot", width=600, height = 400)) -->
-<!--     ) -->
-<!--   ) -->
-<!-- ) -->
-
-<!-- class_server <- function(input, output, session) { -->
-<!--   ui_filtered_matches <- reactive({ -->
-<!--     return (test_grand_slams %>% filter(league == input$in_league, -->
-<!--                                         if (!is.null(input$in_tourney_name)) tourney_name == input$in_tourney_name else TRUE, -->
-<!--                                         if (!is.null(input$in_tourney_round)) round == input$in_tourney_round else TRUE -->
-<!--                                         ) -->
-<!--                                 ) -->
-<!--   }) -->
-
-<!--   match <- reactive({ -->
-<!--     s_match_num <- strsplit(input$in_tourney_match, " - ")[[1]][1] -->
-<!--     selected_match <- ui_filtered_matches() %>% filter(match_num == s_match_num) -->
-<!--     return (selected_match) -->
-<!--   }) -->
-
-<!--   observeEvent(ui_filtered_matches(), { -->
-<!--     tourney_names <- lapply(test_grand_slams %>% filter(league == input$in_league) -->
-<!--                             %>% distinct(tourney_name) %>% .$tourney_name, as.character) -->
-<!--     rounds <- if (!is.null(input$in_tourney_name)) { -->
-<!--       lapply(test_grand_slams %>% filter(league == input$in_league, tourney_name == input$in_tourney_name) -->
-<!--                        %>% distinct(round) %>% .$round, as.character) -->
-<!--     } else c() -->
-
-<!--     matches <- ui_filtered_matches() %>% select(match_num, winner_name, loser_name) %>% -->
-<!--       summarise(match_desc = paste0(match_num, " - ", winner_name, " VS ", loser_name)) %>% -->
-<!--       .$match_desc -->
-
-<!--     updatePickerInput(session = session, inputId="in_tourney_name", -->
-<!--                       choices = tourney_names, selected = input$in_tourney_name) -->
-
-<!--     updatePickerInput(session = session, inputId="in_tourney_round", -->
-<!--                       choices = rounds, selected = input$in_tourney_round) -->
-
-<!--     updatePickerInput(session = session, inputId="in_tourney_match", -->
-<!--                       choices = matches) -->
-<!--   }) -->
-
-<!--   observeEvent(match(), { -->
-<!--     if (match() %>% nrow() > 0) { -->
-<!--       obs <- get_observations(match(), 5) -->
-<!--       logr_predict <- predict(lgreg_model, newdata = obs, type="prob") -->
-
-<!--       w_name <- as.character(match() %>% .$winner_name) -->
-<!--       l_name <- as.character(match() %>% .$loser_name) -->
-<!--       odds_df <- tibble(name=c(l_name, w_name), probs = unlist(logr_predict)) -->
-
-<!--       output$odds_plot <- renderPlot({ -->
-<!--         odds_df %>% ggplot(aes(name, probs)) + -->
-<!--           geom_bar(stat="identity", aes(fill = ifelse(probs >= 0.5, 'red', 'green'))) + -->
-<!--           theme(legend.position = "none") -->
-<!--       }) -->
-<!--     } -->
-<!--   }) -->
-<!-- } -->
-
-<!-- shinyApp(class_ui, class_server, options=list(height=800)) -->
-<!-- ``` -->
+### Player rank evolution
+
+Interactive page with ranking evolution of players and other statistics
+
+```{r, message=FALSE, warning=FALSE}
+ui <- fluidPage(
+  titlePanel("Player Statistics"),
+
+  sidebarLayout(
+    sidebarPanel(
+      awesomeRadio(
+        inputId = "league",
+        label = "League",
+        choices = c("ATP", "WTA"),
+        selected = "ATP",
+        status = "primary",
+        inline=TRUE
+      ),
+      sliderInput("max_rank",
+                  "Maximum player rank",
+                  min = 1,
+                  max = 1000,
+                  value = 100),
+      multiInput(
+        inputId = "players",
+        label = "Players:",
+        choices = c("Initializing...")
+      ),
+      tableOutput("playerTable")
+    ),
+
+    # Show a plot of the generated distribution
+    mainPanel(
+      plotOutput("rankPlot"),
+      plotOutput("winsPlot", height=300),
+      plotOutput("acePlot", height=300),
+    )
+  )
+)
+
+server <- function(input, output, session) {
+  observeEvent(input$league, {
+    league_players <- uiRankPlayers() %>% filter(league==input$league)
+    updateMultiInput(
+      session=session,
+      inputId = "players",
+      choices=league_players$full_name
+    )
+  })
+
+  uiRankPlayers <- reactive({
+    max_ranking <- rankings_DF %>% rename(player_id=player) %>% group_by(player_id) %>% summarize(max_ranking=min(rank))
+
+    max_rank <- players_DF %>% mutate(birth_date=as.Date(birth_date), full_name=paste0(last_name, " ", first_name)) %>%
+      filter(birth_date > as.Date('1980-01-01')) %>%
+      inner_join(max_ranking, by=c("player_id")) %>% filter(max_ranking < input$max_rank)
+
+    return (max_rank)
+  })
+
+  uiPlayers <- reactive({
+    sel_players <- uiRankPlayers() %>% filter(full_name %in% input$players)
+    sel_players <- rankings_DF %>% rename(player_id=player) %>% inner_join(sel_players, by=c("player_id"))
+    return (sel_players)
+  })
+
+  observeEvent(uiPlayers(), {
+    output$rankPlot <- renderPlot({
+      ggplot(uiPlayers(),
+             aes(x=ranking_date, y=rank, group=full_name)) +
+        geom_line(aes(color=full_name), size=1) +
+        labs(x="Date", y="Rank", title="Evolution of rank of players") +
+        scale_colour_viridis_d() + theme_classic()
+    })
+
+    players_DF <- uiPlayers() %>% select(player_id, full_name) %>% distinct()
+    aces_DF <- combined_DF %>% select(winner_id, year, w_ace) %>%
+      rename(player_id=winner_id) %>% inner_join(players_DF, by=c("player_id")) %>%
+      na.omit() %>%
+      group_by(full_name, year) %>% summarise(full_name=full_name, year=year, aces=mean(w_ace))
+
+    output$acePlot <- renderPlot({
+      ggplot(aces_DF,
+             aes(x=year, y=aces, group=full_name)) +
+        geom_line(aes(color=full_name), size=1) +
+        labs(x="Date", y="Average aces per match", title="Evolution of 1st ace of players") +
+        scale_colour_viridis_d() + theme_classic()
+    })
+
+    game_DF <- combined_DF %>% select(winner_id, w_1stWon, w_2ndWon, w_breaks) %>%
+      rename(player_id=winner_id) %>% inner_join(players_DF, by=c("player_id")) %>%
+      na.omit() %>% rename(FirstServeWon=w_1stWon, SecondServeWon=w_2ndWon, Breaks=w_breaks) %>%
+      gather(key="Statistic", value="n", 2,3,4) %>% group_by(full_name)
+
+    output$winsPlot <- renderPlot({
+      ggplot(game_DF,
+             aes(x=Statistic, y=n, fill=full_name)) +
+        geom_boxplot() + coord_flip() +
+        labs(title="Evolution of game wons and break") +
+        scale_colour_viridis_d() + theme_classic()
+    })
+
+    player_stats <- uiPlayers() %>% distinct(full_name, birth_date, ioc, hand) %>%
+      mutate(birth_date=format(birth_date, "%Y-%m-%d")) %>%
+      mutate(hand=recode(hand, L="Left", R="Right", U="Both")) %>%
+      rename(Name=full_name, Birthdate=birth_date, Country=ioc, Hand=hand)
+    output$playerTable <- renderTable(player_stats %>% select(Name, Country, Birthdate, Hand),
+                                      spacing="xs", striped=TRUE)
+  })
+
+}
+
+shinyApp(ui, server, options=list(height=800))
+```
+
+### Regression models for predicting players rank difference
+
+Dashboard for different gression models applied to a 90-10% train-test split on matches that took place after 2005.
+
+```{r, warning=FALSE, message=FALSE}
+split_data <- function(data, test) {
+  spec = c(train = 1 - test, test = test)
+  N = nrow(data)
+  set.seed(Sys.time())
+  data_split = sample(cut( seq(N), N * cumsum(c(0, spec)), labels = names(spec) ))
+
+  return(split(data, data_split))
+}
+
+# Setting up features and target
+data_set <- combined_DF %>% filter(year > 2005) %>%
+  filter(!is.na(winner_rank) & !is.na(loser_rank)) %>%
+  mutate(rank_diff=winner_rank-loser_rank) %>%
+  select(c(rank_diff, winner_age, loser_age, winner_rank_points, loser_rank_points,
+           minutes, w_ace, w_df, l_ace, l_df, w_1stWon, w_2ndWon, w_breaks, l_breaks
+           )) %>% na.omit() %>%
+  split_data(0.1)
+
+
+# Regression Models
+r_models <- c()
+# Linear with different IC
+r_models$lm <- lm(rank_diff ~ ., data_set$train)
+r_models$aic <- step(r_models$lm, trace=0)
+r_models$bic <- step(r_models$lm, trace=0, k=log(nrow(data_set$train)))
+
+# Generalized Linear model
+r_models$glm <- glm(rank_diff ~ .  , family=quasi(), data=data_set$train)
+
+# XgBoost
+data_matrix <- c()
+data_matrix$train <- c()
+data_matrix$train$X = as.matrix(data_set$train)[,2:ncol(data_set$train)]
+data_matrix$train$Y = as.matrix(data_set$train)[,1]
+data_matrix$test <- c()
+data_matrix$test$X = as.matrix(data_set$test)[,2:ncol(data_set$test)]
+data_matrix$test$Y = as.matrix(data_set$test)[,1]
+r_models$xgb <- xgboost(data=data_matrix$train$X, label=data_matrix$train$Y,
+                        nrounds=2000, objective = "reg:squarederror", verbose=0)
+
+ui_tab <- function(name, text, width=600) {
+  tabItem(tabName = name,
+          fluidRow(
+            h3(text),
+            box(splitLayout(cellWidths = c("50%", "50%"), plotOutput(paste0(name, "_res"), width=width/2, height = 400),
+                plotOutput(paste0(name, "_pred"), width=width/2, height = 400)), width=width, collapsible=TRUE)),
+          fluidRow(
+            box(plotOutput(paste0(name, "_sha"), width=width, height = 400), width=width, collapsible=TRUE)),
+          fluidRow(
+            box(h4("Model Performance"),
+                verbatimTextOutput(paste0(name, "_p")), width=width, collapsible=TRUE)),
+          fluidRow(
+            box(h4("Model Summary"),
+                verbatimTextOutput(paste0(name, "_s")), width=width, collapsible=TRUE)))
+}
+
+ui <- dashboardPage(
+  dashboardHeader(title = "Rank difference"),
+  dashboardSidebar(
+    div("Regression Models"),
+    sidebarMenu(
+      menuItem("Linear Model", tabName = "lm", icon = icon("th")),
+      menuItem("Linear Model with AIC", tabName = "aic", icon = icon("th")),
+      menuItem("Linear Model with BIC", tabName = "bic", icon = icon("th")),
+      menuItem("General Linear Model", tabName = "glm", icon = icon("th")),
+      menuItem("XGBoost", tabName = "xgb", icon = icon("th"))
+    )
+  ),
+
+  dashboardBody(
+    tabItems(
+      ui_tab("lm", "Plain Linear Model"),
+      ui_tab("aic", "Linear Model with Akaike Information Criterion"),
+      ui_tab("bic", "Linear Model with Bayesian Information Criterion"),
+      ui_tab("glm", "General Linear Model"),
+      ui_tab("xgb", "Extreme Gradient Boosting Tree")
+    )
+  )
+)
+
+
+rsquared <- function(true, predicted, has_intercept) {
+  sse <- sum((predicted - true)^2)
+  sst <- ifelse(has_intercept, sum((true - mean(true))^2), sum(true^2))
+  rsq <- 1 - sse / sst
+
+  return (round(rsq, digits=5))
+}
+
+mean_squared_error <- function(true, predicted) {
+  return( round(mean((predicted - true) ^ 2), digits=5) )
+}
+
+do_predict <- function(model, data) {
+  y_hat <- tryCatch(
+    {predict(model, data %>% select(-c(rank_diff)))},
+    error=function(cond) {
+      predict(model, as.matrix(data %>% select(-c(rank_diff))))
+    }
+  )
+  return (y_hat)
+}
+
+plot_residuals <- function(model) {
+  y_hat <- model$y_hat_train
+  residuals <- data_set$train$rank_diff - y_hat
+  ggplot(data.frame(Residuals=abs(residuals), Predictions=y_hat),
+              aes(Predictions, Residuals)) +
+    geom_point(color="blue") +
+    labs(title="Homoscedascity for residuals") +
+    theme_bw() + theme(plot.title = element_text(hjust = 0.5))
+}
+
+plot_predictions <- function(model) {
+  y_hat <- model$y_hat_train
+  ggplot(data.frame(Predictions=y_hat),
+              aes(x=Predictions)) +
+    geom_freqpoly(bins=100) +
+    labs(x="Rank difference", y="Number of predictions", title="Predicted distribution of rank difference")  +
+    theme_bw() + theme(plot.title = element_text(hjust = 0.5))
+}
+
+plot_shapr <- function(model) {
+  explainer <- model$explainer
+  # for first 2 test samples
+  explanation <- explain(data_set$test %>% select(-c(rank_diff)) %>% slice(1:2), approach="gaussian",
+                         explainer=explainer, prediction_zero=mean(data_set$train$rank_diff))
+  plot(explanation, plot_phi0 = FALSE)
+}
+
+print_performance <- function(model) {
+  y_hat_train <- model$y_hat_train
+  y_hat_test <- model$y_hat_test
+
+  paste0('TRAIN R^2: ', rsquared(data_set$train$rank_diff, y_hat_train, TRUE),
+         '   TRAIN MSE: ', mean_squared_error(data_set$train$rank_diff, y_hat_train),
+         '   TEST R^2: ', rsquared(data_set$test$rank_diff, y_hat_test, TRUE),
+         '   TEST MSE: ', mean_squared_error(data_set$test$rank_diff, y_hat_test))
+}
+
+for (i in 1:length(r_models)) {
+  model <- r_models[[i]]
+  model$y_hat_train <- do_predict(model, data_set$train)
+  model$y_hat_test <- do_predict(model, data_set$test)
+  model$explainer <- shapr(data_set$train %>% select(-c(rank_diff)), model)
+  model$res_plot <- plot_residuals(model)
+  model$res_pred <- plot_predictions(model)
+  model$shapr_plot <- plot_shapr(model)
+  model$perf <- print_performance(model)
+  r_models[[i]] <- model
+}
+
+
+server <- function(input, output) {
+  output$lm_res <- renderPlot({r_models$lm$res_plot})
+  output$lm_pred <- renderPlot({r_models$lm$res_pred})
+  output$lm_sha <- renderPlot({r_models$lm$shapr_plot})
+  output$lm_p <- renderPrint({r_models$lm$perf})
+  output$lm_s <- renderPrint({summary(r_models$lm)})
+
+  output$aic_res <- renderPlot({r_models$aic$res_plot})
+  output$aic_pred <- renderPlot({r_models$aic$res_pred})
+  output$aic_sha <- renderPlot({r_models$aic$shapr_plot})
+  output$aic_p <- renderPrint({r_models$aic$perf})
+  output$aic_s <- renderPrint({summary(r_models$aic)})
+
+  output$bic_res <- renderPlot({r_models$bic$res_plot})
+  output$bic_pred <- renderPlot({r_models$bic$res_pred})
+  output$bic_sha <- renderPlot({r_models$bic$shapr_plot})
+  output$bic_p <- renderPrint({r_models$bic$perf})
+  output$bic_s <- renderPrint({summary(r_models$bic)})
+
+  output$glm_res <- renderPlot({r_models$glm$res_plot})
+  output$glm_pred <- renderPlot({r_models$glm$res_pred})
+  output$glm_sha <- renderPlot({r_models$glm$shapr_plot})
+  output$glm_p <- renderPrint({r_models$glm$perf})
+  output$glm_s <- renderPrint({summary(r_models$glm)})
+
+  output$xgb_res <- renderPlot({r_models$xgb$res_plot})
+  output$xgb_pred <- renderPlot({r_models$xgb$res_pred})
+  output$xgb_sha <- renderPlot({r_models$xgb$shapr_plot})
+  output$xgb_p <- renderPrint({r_models$xgb$perf})
+  output$xgb_s <- renderPrint({summary(r_models$xgb)})
+}
+
+shinyApp(ui, server, options=list(height=1200))
+```
+
+
+### Classification models for predicting who will win a match
+```{r, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
+average_stat <- function(stat, league) {
+  w_stat <- paste('winner_', stat, sep = "")
+  l_stat <- paste('loser_', stat, sep = "")
+
+  return ((combined_DF %>%
+            select(stat_1 = w_stat, stat_2 = l_stat) %>%
+            filter(!is.na(stat_1), !is.na(stat_2), league == league) %>%
+            mutate(avg_stat = (stat_1 + stat_2) / 2) %>%
+            summarise(value = mean(avg_stat)))$value)
+}
+
+max_or_default <- function(values, default) {
+  if (all(is.na(values))) {
+    return (default)
+  } else {
+    return (max(values, na.rm = TRUE))
+  }
+}
+
+get_player_stats <- function(end_date, period) {
+
+  # Compute average values to replace nas
+  avg_age_atp <- average_stat('age', 'ATP')
+  avg_age_wta <- average_stat('age', 'WTA')
+  avg_ht_atp <- average_stat('ht', 'ATP')
+  avg_ht_wta <- average_stat('ht', 'WTA')
+
+  recent_matches_DF <- combined_DF %>% filter(tourney_date >= end_date - years(period), tourney_date < end_date)
+
+  # Transform matches data frame - separate winner and loser stats on different rows
+  recent_matches_t_DF <- recent_matches_DF %>%
+    rename(player_id=winner_id, bpFaced=w_bpFaced, bpSaved=w_bpSaved, breaks=w_breaks,
+           aces=w_ace, p1stWon = w_1stWon,  p1stIn = w_1stIn, df = w_df, age = winner_age,
+           ht = winner_ht) %>%
+    bind_rows(recent_matches_DF %>%
+                rename(player_id=loser_id, bpFaced=l_bpFaced, bpSaved=l_bpSaved, breaks=l_breaks,
+                       aces = l_ace, p1stWon = l_1stWon,  p1stIn = l_1stIn, df = l_df, age = loser_age,
+                       ht = loser_ht))
+
+  # Create a players statistics data frame
+  players_stats_DF <- recent_matches_t_DF %>% group_by(league, player_id) %>%
+    replace_na(list(breaks=0, matches=0, aces=0, p1stWon = 0, p1stIn = 0, df = 0)) %>%
+    summarise(matches = n(), breaksP = sum(breaks) / n(), acesP = sum(aces) / n(),
+              dfP = sum(df) / n(), p1stWonP = sum(p1stWon) / sum(p1stIn),
+              age = max_or_default(age, if(league[1] == 'ATP') avg_age_atp else avg_age_wta),
+              ht = max_or_default(ht, if(league[1] == 'ATP') avg_ht_atp else avg_ht_wta)) %>%
+    ungroup() %>%
+    replace_na(list(p1stWonP=0))
+
+  return (players_stats_DF)
+}
+
+get_observations <- function(matches, player_stats_period) {
+  earliest_tourney <- matches %>% slice(which.min(tourney_date)) %>% .$tourney_date
+  player_stats <- get_player_stats(earliest_tourney, player_stats_period)
+
+  observations <- matches %>%
+    left_join(player_stats, by=c("winner_id"="player_id", "league"="league")) %>%
+    left_join(player_stats, by=c("loser_id"="player_id", "league"="league"), suffix=c(".w", ".l")) %>%
+    replace_na(list(winner_rank=0, loser_rank=0, winner_rank_points=0, loser_rank_points=0, surface='Hard',
+                    age.w=0, age.l=0, ht.w=0, ht.l=0, matches.w=0, matches.l=0, breaksP.w=0, breaksP.l=0,
+                    acesP.w=0, acesP.l=0, dfP.w=0, dfP.l=0, p1stWonP.w=0, p1stWonP.l=0))
+
+  n_rows <- observations %>% nrow()
+  observations_pos <- observations %>% sample_n((n_rows + 1)/ 2, replace=FALSE)
+  observations_neg <- anti_join(observations, observations_pos)
+
+  observations_pos <- observations_pos %>% mutate(rank_d = winner_rank - loser_rank,
+                       points_d = winner_rank_points - loser_rank_points,
+                       age_d = age.w- age.l,
+                       ht_d = ht.w - ht.l,
+                       matches_d = matches.w - matches.l,
+                       breaksP_d = breaksP.w - breaksP.l,
+                       acesP_d = acesP.w - acesP.l,
+                       dfP_d = dfP.w - dfP.l,
+                       p1stWonP_d = p1stWonP.w - p1stWonP.l,
+                       target = 1) %>%
+    select(league, age_d, ht_d, rank_d, points_d, matches_d, breaksP_d, acesP_d, dfP_d, p1stWonP_d, target)
+
+  observations_neg <- observations_neg %>% mutate(rank_d = loser_rank - winner_rank,
+                       points_d = loser_rank_points - winner_rank_points,
+                       age_d = age.l- age.w,
+                       ht_d = ht.l - ht.w,
+                       matches_d = matches.l - matches.w,
+                       breaksP_d = breaksP.l - breaksP.w,
+                       acesP_d = acesP.l - acesP.w,
+                       dfP_d = dfP.l - dfP.w,
+                       p1stWonP_d = p1stWonP.l - p1stWonP.w,
+                       target = -1) %>%
+    select(league, age_d, ht_d, rank_d, points_d, matches_d, breaksP_d, acesP_d, dfP_d, p1stWonP_d, target)
+
+  return (observations_pos %>%
+            bind_rows(observations_neg) %>%
+            mutate(target = factor(target))
+          )
+}
+
+# Data Split
+train_matches <- combined_DF %>% filter(tourney_date >= '2017-01-01', tourney_date < '2018-01-01' )
+valid_matches <- combined_DF %>% filter(tourney_date >= '2018-01-01', tourney_date < '2019-01-01' )
+test_matches <- combined_DF %>% filter(tourney_date >= '2019-01-01', tourney_date < '2020-01-01' )
+test_grand_slams <- test_matches %>% filter(tourney_level == 'G')
+ui_filtered_matches <- test_grand_slams
+
+# Observations
+observations_train <- get_observations(train_matches, 5)
+observations_valid <- get_observations(valid_matches, 5)
+observations_test <- get_observations(test_matches, 5)
+
+
+# Train Models
+train_rows <- observations_train %>% nrow()
+train_idx <- c(1:train_rows)
+valid_rows <- observations_valid %>% nrow()
+valid_idx <- c((train_rows + 1):(train_rows + valid_rows))
+
+trControl <- trainControl(
+ index = list(train_idx),
+ indexOut = list(valid_idx),
+ indexFinal = valid_idx
+)
+
+
+# KNN
+grid <- expand.grid(k = c(3, 5, 7, 9, 11, 13))
+knn_model <- train(target ~ .,
+                   data =  observations_train %>% bind_rows(observations_valid),
+                   method = "knn",
+                   preProcess = c("center","scale"),
+                   trControl = trControl,
+                   tuneGrid = grid)
+
+# Random Forest
+grid <- expand.grid(.mtry = (1:(ncol(observations_train) - 1)))
+rf_model <- train(target ~ .,
+                 data = observations_train %>% bind_rows(observations_valid),
+                 method = 'rf',
+                 trControl = trControl,
+                 tuneGrid = grid,
+                 ntree = 15)
+
+
+# Logistic Regression
+lgreg_model <- train(target ~ .,
+                 data = observations_train %>% bind_rows(observations_valid),
+                 method = 'bayesglm',
+                 trControl = trControl)
+
+
+# SVM
+grid <- expand.grid(C = seq(0.1, 2, length=5))
+svm_model <- train(target ~ .,
+                 data = observations_train %>% bind_rows(observations_valid),
+                 method = 'svmLinear',
+                 preProcess = c("center","scale"),
+                 tuneGrid = grid,
+                 trControl = trControl)
+
+
+# XG Boost
+grid <- expand.grid(
+  nrounds = 50,
+  eta = c(0.1, 0.3, 0.5),
+  max_depth = c(2, 4, 6),
+  gamma = c(0.0, 0.5),
+  colsample_bytree = 1,
+  min_child_weight = 1,
+  subsample = 1
+)
+xgb_model <- train(target ~ .,
+                 data = observations_train %>% bind_rows(observations_valid),
+                 method = 'xgbTree',
+                 trControl = trControl)
+```
+
+#### Model interpretation
+```{r, echo=FALSE}
+
+ui_tab <- function(name, text, width=600) {
+  tabItem(tabName = name,
+          fluidRow(
+            h3(text),
+            box(plotOutput(paste0(name, "_confusion"), width=width, height = 400), width=width, collapsible=TRUE)),
+          fluidRow(
+            box(plotOutput(paste0(name, "_shapley"), width=width, height = 400), width=width, collapsible=TRUE)),
+          fluidRow(
+            box(plotOutput(paste0(name, "_perf"), width=width, height = 400), width=width, collapsible=TRUE))
+  )
+}
+
+ui <- dashboardPage(
+  dashboardHeader(title = "Match Prediction"),
+  dashboardSidebar(
+    div("Classification Models"),
+    sidebarMenu(
+      menuItem("KNN", tabName = "knn", icon = icon("th")),
+      menuItem("Random Forest", tabName = "rf", icon = icon("th")),
+      menuItem("SVM", tabName = "svm", icon = icon("th")),
+      menuItem("Logistic Regression", tabName = "lgreg", icon = icon("th")),
+      menuItem("XGBoost", tabName = "xgb", icon = icon("th"))
+    )
+  ),
+
+  dashboardBody(
+    tabItems(
+      ui_tab("knn", "KNN"),
+      ui_tab("rf", "Random Forest"),
+      ui_tab("svm", "SVM"),
+      ui_tab("lgreg", "Logistic Regression"),
+      ui_tab("xgb", "XGBoost")
+      )
+    )
+  )
+
+# Precompute plots
+plot_confusion <- function(model, observations) {
+  predictions <- predict(model, newdata = observations)
+  confusion <- confusionMatrix(predictions, observations$target)
+  confusion_values <- as.data.frame(confusion$table)
+
+  return (ggplot(data = confusion_values, mapping = aes(x = Prediction, y = Reference)) +
+    geom_tile(aes(fill = Freq), colour = "white") +
+    geom_text(aes(label = sprintf("%1.0f", Freq)), vjust = 1, color = "white", size=12) +
+    scale_fill_viridis_c())
+}
+
+plot_shapley <- function(model, train, test) {
+  features <- train %>% select(-target) %>% as.data.frame()
+  predictor <- Predictor$new(model, data = features, y = train$target)
+  shapley <- Shapley$new(predictor, x.interest = test[1:15, -11])
+
+  shapley$results %>% filter(class == 1) %>%
+    ggplot(aes(x = feature, y = phi)) +
+    geom_bar(stat = "identity") +
+    coord_flip()
+}
+
+plot_performance_knn <- function(model) {
+  data <- melt(model$results %>% select(k, Accuracy, Kappa), id="k")
+  ggplot(data = data) +
+    geom_line(aes(x = k, y = value, color = variable)) +
+    geom_point(aes(x = k, y = value, fill = variable), shape=21, size=6, show.legend = FALSE) +
+    labs(x = "Neighbours", y = "Score", colour = "Metric")
+}
+
+plot_performance_rf <- function(model) {
+  data <- melt(model$results %>% select(mtry, Accuracy, Kappa), id="mtry")
+  ggplot(data = data) +
+    geom_line(aes(x = mtry, y = value, color = variable)) +
+    geom_point(aes(x = mtry, y = value, fill = variable), shape=21, size=6, show.legend = FALSE) +
+    labs(x = "# Variables per split", y = "Score", colour = "Metric")
+}
+
+plot_performance_svm <- function(model) {
+  data <- melt(model$results %>% select(C, Accuracy, Kappa), id="C")
+  ggplot(data = data) +
+    geom_line(aes(x = C, y = value, color = variable)) +
+    geom_point(aes(x = C, y = value, fill = variable), shape=21, size=6, show.legend = FALSE) +
+    labs(x = "C", y = "Score", colour = "Metric")
+}
+
+plot_performance_xgb <- function(model) {
+  data <- melt(model$results %>% select(max_depth, gamma, eta, Accuracy, Kappa), id= c("max_depth", "gamma", "eta"))
+  ggplot(data = data) +
+    geom_line(aes(x = max_depth, y = value, color = variable)) +
+    geom_point(aes(x = max_depth, y = value, fill = variable), shape=21, size=6, show.legend = FALSE) +
+    facet_wrap(~gamma + eta, labeller = labeller(gamma = label_both, eta = label_both)) +
+    labs(x = "C", y = "Score", colour = "Metric")
+}
+
+precomputed_plots <- list(
+  knn = list(
+    confusion =  plot_confusion(knn_model, observations_test),
+    shapley = plot_shapley(knn_model, observations_train, observations_test),
+    perf = plot_performance_knn(knn_model)
+  ),
+  rf = list(
+    confusion = plot_confusion(rf_model, observations_test),
+    shapley = plot_shapley(rf_model, observations_train, observations_test),
+    perf = plot_performance_rf(rf_model)
+  ),
+  svm = list(
+    confusion = plot_confusion(svm_model, observations_test),
+    shapley = plot_shapley(svm_model, observations_train, observations_test),
+    perf = plot_performance_svm(svm_model)
+  ),
+  lgreg = list(
+    confusion = plot_confusion(lgreg_model, observations_test),
+    shapley = plot_shapley(lgreg_model, observations_train, observations_test)
+  ),
+  xgb = list(
+    confusion = plot_confusion(xgb_model, observations_test),
+    shapley = plot_shapley(xgb_model, observations_train, observations_test),
+    perf = plot_performance_xgb(xgb_model)
+  )
+)
+
+
+server <- function(input, output) {
+  output$knn_confusion <- renderPlot({precomputed_plots$knn$confusion})
+  output$knn_shapley <- renderPlot({precomputed_plots$knn$shapley})
+  output$knn_perf <- renderPlot({precomputed_plots$knn$perf})
+
+  output$rf_confusion <- renderPlot({precomputed_plots$rf$confusion})
+  output$rf_shapley <- renderPlot({precomputed_plots$rf$shapley})
+  output$rf_perf <- renderPlot({precomputed_plots$rf$perf})
+
+  output$svm_confusion <- renderPlot({precomputed_plots$svm$confusion})
+  output$svm_shapley <- renderPlot({precomputed_plots$svm$shapley})
+  output$svm_perf <- renderPlot({precomputed_plots$svm$perf})
+
+  output$lgreg_confusion <- renderPlot({precomputed_plots$lgreg$confusion})
+  output$lgreg_shapley <- renderPlot({precomputed_plots$rf$shapley})
+
+  output$xgb_confusion <- renderPlot({precomputed_plots$xgb$confusion})
+  output$xgb_shapley <- renderPlot({precomputed_plots$xgb$shapley})
+  output$xgb_perf <- renderPlot({precomputed_plots$xgb$perf})
+}
+
+shinyApp(ui, server, options=list(height=1200))
+```
+
+#### Interactive Prediction
+```{r, echo=FALSE}
+
+class_ui <- dashboardPage(
+  dashboardHeader(title = "Interactive Predictions"),
+  dashboardSidebar(
+    collapsed = TRUE
+  ),
+
+  dashboardBody(
+    fluidRow(
+      h3("Predicting ATP and WTA 2019 Grand Slam matches"),
+      pickerInput(inputId="in_league", label="Select League", choices=c('WTA', 'ATP')),
+      pickerInput(inputId="in_tourney_name", label="Select Tourney", choices=c()),
+      pickerInput(inputId="in_tourney_round", label="Select Round", choices=c()),
+      pickerInput(inputId="in_tourney_match", label="Select Match", choices=c('000 - '))
+    ),
+    fluidRow(
+      h3("Winnig Odds"),
+      box(width=600, height = 400, plotOutput("odds_plot", width=600, height = 400))
+    )
+  )
+)
+
+class_server <- function(input, output, session) {
+  ui_filtered_matches <- reactive({
+    return (test_grand_slams %>% filter(league == input$in_league,
+                                        if (!is.null(input$in_tourney_name)) tourney_name == input$in_tourney_name else TRUE,
+                                        if (!is.null(input$in_tourney_round)) round == input$in_tourney_round else TRUE
+                                        )
+                                )
+  })
+
+  match <- reactive({
+    s_match_num <- strsplit(input$in_tourney_match, " - ")[[1]][1]
+    selected_match <- ui_filtered_matches() %>% filter(match_num == s_match_num)
+    return (selected_match)
+  })
+
+  observeEvent(ui_filtered_matches(), {
+    tourney_names <- lapply(test_grand_slams %>% filter(league == input$in_league)
+                            %>% distinct(tourney_name) %>% .$tourney_name, as.character)
+    rounds <- if (!is.null(input$in_tourney_name)) {
+      lapply(test_grand_slams %>% filter(league == input$in_league, tourney_name == input$in_tourney_name)
+                       %>% distinct(round) %>% .$round, as.character)
+    } else c()
+
+    matches <- ui_filtered_matches() %>% select(match_num, winner_name, loser_name) %>%
+      summarise(match_desc = paste0(match_num, " - ", winner_name, " VS ", loser_name)) %>%
+      .$match_desc
+
+    updatePickerInput(session = session, inputId="in_tourney_name",
+                      choices = tourney_names, selected = input$in_tourney_name)
+
+    updatePickerInput(session = session, inputId="in_tourney_round",
+                      choices = rounds, selected = input$in_tourney_round)
+
+    updatePickerInput(session = session, inputId="in_tourney_match",
+                      choices = matches)
+  })
+
+  observeEvent(match(), {
+    if (match() %>% nrow() > 0) {
+      obs <- get_observations(match(), 5)
+      logr_predict <- predict(lgreg_model, newdata = obs, type="prob")
+
+      w_name <- as.character(match() %>% .$winner_name)
+      l_name <- as.character(match() %>% .$loser_name)
+      odds_df <- tibble(name=c(l_name, w_name), probs = unlist(logr_predict))
+
+      output$odds_plot <- renderPlot({
+        odds_df %>% ggplot(aes(name, probs)) +
+          geom_bar(stat="identity", aes(fill = ifelse(probs >= 0.5, 'red', 'green'))) +
+          theme(legend.position = "none")
+      })
+    }
+  })
+}
+
+shinyApp(class_ui, class_server, options=list(height=800))
+```
