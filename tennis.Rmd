@@ -95,10 +95,10 @@ column_types <- cols(
   loser_ioc = 'c',      # Parsed later (factor)
   winner_id = 'i',
   loser_id = 'i',
-  
+
   winner_age = 'd',
   loser_age = 'd',
-  
+
   draw_size = 'c',      # Parsed later (some non numeric in WTA)
   tourney_date = 'c',   # Parsed later (needs to specify format)
   match_num = 'i',
@@ -141,7 +141,7 @@ combined_DF <- bind_rows(list(ATP = singles_atp_DF, WTA = singles_wta_DF), .id =
   mutate(league = factor(league),
          best_of = factor(best_of, ordered = TRUE, levels = c("3", "5")),
          round = factor(round, ordered = TRUE, levels = c("Q4", "ER", "BR", "RR", "R128", "R64", "R32", "R16", "QF", "SF", "F")),
-         
+
          tourney_name = factor(tourney_name),
          tourney_level = factor(tourney_level),
          surface = factor(surface),
@@ -157,11 +157,11 @@ combined_DF <- bind_rows(list(ATP = singles_atp_DF, WTA = singles_wta_DF), .id =
          tourney_id = factor(tourney_id),
          year = as.integer(year),
          tourney_date = parse_date(tourney_date, format="%Y%m%d"),
-         
+
          draw_size = suppressWarnings(as.numeric(draw_size)),
          winner_seed = suppressWarnings(as.numeric(winner_seed)),
          loser_seed = suppressWarnings(as.numeric(loser_seed)),
-         
+
          w_1stPercWon = (w_1stWon / w_1stIn),
          l_1stPercWon = (l_1stWon / l_1stIn),
          w_breaks = (l_bpFaced - l_bpSaved),
@@ -182,7 +182,7 @@ column_types <- cols(
   first_name = "c",
   last_name = "c",
   hand = "c",       # Parsed later (factor)
-  birth_date = "c", # Parsed later (needs to specify format)     
+  birth_date = "c", # Parsed later (needs to specify format)
   ioc = "c"         # Parsed later (factor)
 )
 
@@ -255,7 +255,7 @@ In 2020 the impact of coronavirus pandemy made a severe blow to the sport.
 renderPlotly({ ggplotly( ggplot(combined_DF %>% group_by(league, year) %>% summarise(no_matches = length(year), .groups = 'drop'),
        aes(x=year, y=no_matches, group=league)) +
   scale_x_continuous(breaks=seq(1848, 2021, 5)) +
-  geom_line(aes(color=league), size=1) + 
+  geom_line(aes(color=league), size=1) +
   scale_color_manual(values=c('#3366ff','red')) +
   labs(x="Year", y="Number of matches", title="Number of matches per year") +
   geom_vline(xintercept=2020, linetype="dotted", color="black", size=0.7) +
@@ -309,9 +309,9 @@ wins_per_country_plot <- function() {
     lon = "d",
     country = "c"
   )
-  
+
   country_coords_DF <- load_data('./data', "country_coords.csv", column_types)
-  
+
   country_wins <- combined_DF %>%
     filter(round == 'F') %>%
     group_by(league) %>% count(winner_ioc, name = "tourney_wins") %>%
@@ -321,7 +321,7 @@ wins_per_country_plot <- function() {
     left_join(country_coords_DF, by=c("country" = "country")) %>%
     mutate(country=replace(country, winner_ioc == 'USA', 'USA')) %>%
     ungroup()
-  
+
   static_plot <- ggplot(country_wins) +
     geom_polygon(data = map_data("world"), aes(x = long, y = lat, group = group), color = "white", fill = "grey", size = 0.1) +
     geom_point(aes(x = lon, y = lat, size = tourney_wins, color = tourney_wins, label_country = country, label_combined = tourney_wins, label_atp = ATP, label_wta = WTA)) +
@@ -329,7 +329,7 @@ wins_per_country_plot <- function() {
     theme_void() +
     ggtitle("Tourney wins by country breakdown")
     coord_quickmap()
-  
+
   return (
     ggplotly(static_plot, tooltip = c('label_country', 'label_combined', 'label_atp', 'label_wta'))
     )
@@ -355,14 +355,14 @@ build_surface_type_plot <- function() {
           group_by(league, surface) %>%
           summarise(count = n(), .groups = 'drop') %>%
           drop_na()
-  
+
   static_plot <- ggplot(df) +
     geom_linerange(aes(x = surface, ymin = 0, ymax = count, colour = league),  position = position_dodge(width = 0.5)) +
     geom_point(aes(x = surface, y = count, colour = league), size = 4, position = position_dodge(width = 0.5)) +
     scale_color_manual(values=c('#3366ff','red')) +
     theme_classic() +
     labs(x="Surface type", y="Number of matches", color="League", title="Matches by surface type")
-  
+
   return (
     ggplotly(static_plot)
   )
@@ -428,7 +428,7 @@ serves_correlation <- cor(
                 rename(fstIn = l_1stIn, fstWon = l_1stWon, sndWon = l_2ndWon, breaks = l_breaks) %>% mutate(win = 0))
 )
 
-ggplotly(ggplot(data = melt(serves_correlation), aes(x = Var1, y = Var2, fill = value)) + 
+ggplotly(ggplot(data = melt(serves_correlation), aes(x = Var1, y = Var2, fill = value)) +
   geom_tile() +
   scale_fill_viridis_c() +
   labs(x="Variable 1", y="Variable 2", title="Correlation Matrix for serves and breaks"))
@@ -459,11 +459,11 @@ age_by_rank_plot <- function() {
     group_by(year, league, rank) %>%
     summarise(avg_age = mean(age)) %>%
     ungroup()
-    
+
   static_plot <- ggplot(df, aes(rank, avg_age, frame = year)) +
     geom_line(aes(color=league)) +
     labs(x="Rank", y="Average age", title="Average Rank by Age")
-  
+
   return (
     ggplotly(static_plot) %>%
       animation_opts(1000, easing = "elastic", redraw = FALSE) %>%
@@ -550,15 +550,19 @@ ui <- fluidPage(
         inputId = "players",
         label = "Players:",
         choices = c("Initializing...")
-      ),
-      tableOutput("playerTable")
+      )
     ),
 
     # Show a plot of the generated distribution
     mainPanel(
-      plotOutput("rankPlot"),
-      plotOutput("winsPlot", height=300),
-      plotOutput("acePlot", height=300),
+      tabsetPanel(type = "tabs",
+                  tabPanel("Ranks", fluidRow(
+                    plotOutput("rankPlot"),
+                    tableOutput("playerTable"))),
+                  tabPanel("Statistics", fluidRow(
+                    plotOutput("acePlot", height=250),
+                    plotOutput("winsPlot", height=300))),
+                  tabPanel("Graph", {plotOutput("graphPlot")}) )
     )
   )
 )
@@ -612,13 +616,13 @@ server <- function(input, output, session) {
         scale_colour_viridis_d() + theme_classic()
     })
 
-    game_DF <- combined_DF %>% select(winner_id, w_1stWon, w_2ndWon, w_breaks) %>%
+    stat_DF <- combined_DF %>% select(winner_id, w_1stWon, w_2ndWon, w_breaks) %>%
       rename(player_id=winner_id) %>% inner_join(players_DF, by=c("player_id")) %>%
       na.omit() %>% rename(FirstServeWon=w_1stWon, SecondServeWon=w_2ndWon, Breaks=w_breaks) %>%
       gather(key="Statistic", value="n", 2,3,4) %>% group_by(full_name)
 
     output$winsPlot <- renderPlot({
-      ggplot(game_DF,
+      ggplot(stat_DF,
              aes(x=Statistic, y=n, fill=full_name)) +
         geom_boxplot() + coord_flip() +
         labs(title="Evolution of game wons and break") +
@@ -631,11 +635,33 @@ server <- function(input, output, session) {
       rename(Name=full_name, Birthdate=birth_date, Country=ioc, Hand=hand)
     output$playerTable <- renderTable(player_stats %>% select(Name, Country, Birthdate, Hand),
                                       spacing="xs", striped=TRUE)
+
+    games_DF <- combined_DF %>% select(winner_id, loser_id) %>%
+      inner_join(players_DF, by=c("loser_id"="player_id")) %>% rename(loser_name=full_name) %>%
+      inner_join(players_DF, by=c("winner_id"="player_id")) %>% rename(winner_name=full_name) %>%
+      group_by(winner_id, winner_name, loser_id, loser_name) %>%
+      summarise(n=length(loser_id)) %>% ungroup() %>%
+      mutate(winner_id=as.integer(as.factor(winner_id), levels=unique(winner_id)),
+             loser_id=as.integer(as.factor(loser_id), levels=unique(winner_id)))
+    if (nrow(games_DF) == 0) return()
+
+    graph<-network.initialize(max(games_DF$winner_id), loops=TRUE, directed=TRUE)
+    network.vertex.names(graph) <- unique(games_DF$winner_name)
+    add.edges(graph, games_DF$winner_id, games_DF$loser_id)
+    set.edge.attribute(graph, "games", games_DF$n)
+
+    output$graphPlot <- renderPlot({
+      ggplot(ggnetwork(graph), aes(x = x, y = y, xend = xend, yend = yend)) +
+        geom_nodetext(aes(color=vertex.names, label=vertex.names), fontface="bold") +
+        geom_edgetext_repel(aes(label=games), color = "white", fill = "tomato", box.padding = unit(1, "lines")) +
+        geom_edges(color = "black", curvature=0.2, angle=30, size=1, arrow=arrow(length = unit(10, "pt"), type = "closed")) +
+        scale_color_viridis_d() + labs(title="Graph of players win/loose history") + theme_classic()
+    })
   })
 
 }
 
-shinyApp(ui, server, options=list(height=800))
+shinyApp(ui, server, options=list(height=700))
 ```
 
 ### Regression models for predicting players rank difference
