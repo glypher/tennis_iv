@@ -30,10 +30,6 @@ h4.date {
   text-align: center;
 }
 
-<!-- .bigPlot { -->
-<!--   height: 800px !important; -->
-<!-- } -->
-
 .js-plotly-plot {
   height: 600px !important;
 }
@@ -487,23 +483,35 @@ renderPlotly({ ggplotly( ggplot(combined_DF %>% filter(!is.na(winner_hand) & !is
   facet_wrap(~league, nrow=1) ) })
 ```
 
-Correlation between serves and breaks with match wins
-```{r plot_correlation, out.width="100%", message=FALSE, warning=FALSE}
-serves_correlation <- cor(
-  combined_DF %>%
-    select(w_1stIn, w_1stWon, w_2ndWon, w_breaks) %>%
-    filter(!is.na(w_1stIn), !is.na(w_1stWon), !is.na(w_2ndWon), !is.na(w_breaks)) %>%
-    rename(fstIn = w_1stIn, fstWon = w_1stWon, sndWon = w_2ndWon, breaks = w_breaks) %>% mutate(win = 1) %>%
-    bind_rows(combined_DF %>%
-                select(l_1stIn, l_1stWon, l_2ndWon, l_breaks) %>%
-                filter(!is.na(l_1stIn), !is.na(l_1stWon), !is.na(l_2ndWon), !is.na(l_breaks)) %>%
-                rename(fstIn = l_1stIn, fstWon = l_1stWon, sndWon = l_2ndWon, breaks = l_breaks) %>% mutate(win = 0))
-)
+Correlation matrix between various serve statistics and match wins.
+The number of breaks have the strongest correlation with a match win. To obtain a break, a player
+needs to win a set in which the opponent is the one serving. Interestingly there is little difference here
+between men and women (0.57 vs 0.59)
 
-ggplotly(ggplot(data = melt(serves_correlation), aes(x = Var1, y = Var2, fill = value)) +
-  geom_tile() +
-  scale_fill_viridis_c() +
-  labs(x="Variable 1", y="Variable 2", title="Correlation Matrix for serves and breaks"))
+One notable difference between men and women is the correlation between getting the first serve inside the court
+and the number of aces. It is much higher for men (0.35) than it is for women (0.13).
+```{r plot_correlation, out.width="100%", message=FALSE, warning=FALSE}
+
+corr_DF <- combined_DF %>%
+  select(league, w_1stIn, w_1stWon, w_2ndWon, w_breaks, w_ace, w_df) %>%
+  filter(!is.na(w_1stIn), !is.na(w_1stWon), !is.na(w_2ndWon), !is.na(w_breaks), !is.na(w_ace), !is.na(w_df)) %>%
+  rename(fstIn = w_1stIn, fstWon = w_1stWon, sndWon = w_2ndWon, breaks = w_breaks, aces = w_ace, dFaults = w_df) %>% mutate(win = 1) %>%
+  bind_rows(combined_DF %>%
+              select(league, l_1stIn, l_1stWon, l_2ndWon, l_breaks, l_ace, l_df) %>%
+              filter(!is.na(l_1stIn), !is.na(l_1stWon), !is.na(l_2ndWon), !is.na(l_breaks), !is.na(l_ace), !is.na(l_df)) %>%
+              rename(fstIn = l_1stIn, fstWon = l_1stWon, sndWon = l_2ndWon, breaks = l_breaks, aces = l_ace, dFaults = l_df) %>% mutate(win = 0))
+
+atp_serves_correlation <- cor(corr_DF %>% filter(league == "ATP") %>% select(!league))
+wta_serves_correlation <- cor(corr_DF %>% filter(league == "WTA") %>% select(!league))
+combined_server_correlation <- bind_rows(list(ATP = melt(atp_serves_correlation), WTA = melt(wta_serves_correlation)), .id = "league")
+
+ggplotly(
+  ggplot(data = combined_server_correlation, aes(x = Var1, y = Var2, fill = value)) +
+    geom_tile() +
+    facet_grid(cols=vars(league)) +
+    theme_classic() +
+    scale_fill_viridis_c() +
+    labs(x="Variable 1", y="Variable 2", title="Correlation Matrix for serve statistics"))
 ```
 
 Percentage of serves won if the first serve lands inside the court. In tennis, for each game, a player gets
@@ -592,8 +600,13 @@ build_players_by_year_plot <- function() {
 renderPlotly({build_players_by_year_plot()})
 ```
 
-Visualize the distribution of rank difference of players in matches. Notice is gaussian with 0 mean.
-For better visualization we also zoom in for the ranks difference between -150 and 150
+Distribution of rank difference of players in matches. Notice it is Gaussian with 0 mean.
+For better visualization we also zoom in for the ranks difference between -150 and 150.
+This suggests that most matches are balanced. This is achieved in multiple ways.
+Firstly, tournaments usually don't have big discrepancies between players due to
+entry requirements. Moreover, the seeds are carefully chosen not to create
+unbalanced matches. Secondly, as a tournament progresses, players naturally
+face other players with a similar skill level.
 ```{r plot_rank_difference, out.width="100%", message=FALSE, warning=FALSE}
 p <- ggplot(combined_DF %>% filter(!is.na(winner_rank) & !is.na(loser_rank)) %>%
                    group_by(league, winner_rank, loser_rank) %>% summarise(rank_difference = winner_rank - loser_rank, .groups = 'drop'),
@@ -951,7 +964,7 @@ shinyApp(ui, server, options=list(height=1200))
 ```
 
 
-### Classification models for predicting who will win a match
+### Classification models for predicting match wins
 ```{r, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
 average_stat <- function(stat, league) {
   w_stat <- paste('winner_', stat, sep = "")
@@ -1275,7 +1288,7 @@ server <- function(input, output) {
 shinyApp(ui, server, options=list(height=1200))
 ```
 
-#### Interactive Prediction
+### Interactive Prediction
 ```{r, echo=FALSE}
 
 class_ui <- dashboardPage(
