@@ -78,7 +78,7 @@ load_packages <- function(package_names) {
   sapply(list.of.packages, require, character.only=TRUE)
 }
 
-load_packages(c('rmarkdown', 'tidyverse', 'lubridate', 'reshape2', 'viridis', 'maps', 'RJSONIO', "shiny", "shinydashboard", "caret", "kernlab", "e1071", "xgboost", "plotly", "shapr", "arm", "shinyWidgets", "iml", "gridExtra"))
+load_packages(c('rmarkdown', 'tidyverse', 'lubridate', 'reshape2', 'viridis', 'maps', 'RJSONIO', "shiny", "shinydashboard", "caret", "kernlab", "e1071", "xgboost", "plotly", "shapr", "arm", "shinyWidgets", "iml", "gridExtra", "ggnetwork", "network"))
 slice <- dplyr::slice
 select <- dplyr::select
 ```
